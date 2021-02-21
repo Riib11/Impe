@@ -32,4 +32,5 @@ data Expression
   | Application Name [Expression]
   deriving (Show, Eq)
 
-type Name = String
+newtype Name = Name String
+  deriving (Show, Eq, Ord)
