@@ -13,14 +13,12 @@ display tag value = do
 
 main :: IO ()
 main = do
-  putStrLn "[typing]"
   case runTyping (synthesizeInstruction inst) of
-    Left err -> display "error" err
-    Right (t, ctx) -> display "success" t
-  putStrLn "[executing]"
+    Left err -> display "typing: error" err
+    Right (t, ctx) -> display "typing: success" t
   case runExecuting (executeInstruction inst) of
-    Left err -> display "error" err
-    Right (e, ctx) -> display "success" e
+    Left err -> display "executing: error" err
+    Right (e, ctx) -> display "executing: success" e
   where
     inst =
       Block
