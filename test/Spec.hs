@@ -11,6 +11,23 @@ display tag msg = do
       ""
     ]
 
+{-
+TODO: scope error
+
+the following returns Just (Int 10) rather than Just (Bool True)
+
+  Block
+    [ Declaration (Name "x") BoolType,
+      Assignment (Name "x") (Bool True),
+      Block
+        [ Declaration (Name "x") IntType,
+          Assignment (Name "x") (Int 10)
+        ],
+      Return (Reference $ Name "x")
+    ]
+
+-}
+
 main :: IO ()
 main = do
   case runTyping (synthesizeInstruction inst) of
