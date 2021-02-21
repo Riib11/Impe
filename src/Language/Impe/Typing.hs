@@ -48,17 +48,7 @@ throw = lift . Left
 
 processProgram :: Program -> Typing ()
 processProgram = \case
-  Program stmts inst -> do
-    mapM_ processStatement stmts
-    checkInstruction inst UnitType
-
-processStatement :: Statement -> Typing ()
-processStatement = \case
-  Function f params t inst -> do
-    setTyping f $ FunctionType (snd <$> params) t
-    locally do
-      void $ mapM (uncurry setTyping) params
-      checkInstruction inst t
+  Program inst -> checkInstruction inst UnitType
 
 {-
 ## Checking
@@ -91,6 +81,12 @@ synthesizeInstruction = \case
     t <- getTyping x
     t' <- synthesizeExpression e
     void $ unifyTypes t t'
+    return Nothing
+  Function f params t inst -> do
+    setTyping f $ FunctionType (snd <$> params) t
+    locally do
+      mapM_ (uncurry setTyping) params
+      checkInstruction inst t
     return Nothing
   Conditional e inst1 inst2 -> do
     checkExpression e BoolType

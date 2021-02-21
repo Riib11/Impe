@@ -1,7 +1,7 @@
 module Language.Impe.Grammar where
 
 data Program
-  = Program [Instruction]
+  = Program Instruction
   deriving (Show, Eq)
 
 data Instruction
