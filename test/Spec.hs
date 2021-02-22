@@ -2,15 +2,6 @@ import Language.Impe.Executing
 import Language.Impe.Grammar
 import Language.Impe.Typing
 
-display :: String -> String -> IO ()
-display tag msg = do
-  putStrLn . unlines $
-    [ "[" ++ tag ++ "]",
-      "",
-      msg,
-      ""
-    ]
-
 main :: IO ()
 main = do
   case runTyping (synthesizeInstruction inst) of
@@ -32,14 +23,11 @@ main = do
           Return (Reference $ Name "x")
         ]
 
--- inst =
---   Block
---     [ Conditional
---         (Bool True)
---         (Return (Bool False))
---         ( Block
---             [ Declaration (Name "x") BoolType,
---               Return (Reference (Name "x"))
---             ]
---         )
---     ]
+display :: String -> String -> IO ()
+display tag msg = do
+  putStrLn . unlines $
+    [ "[" ++ tag ++ "]",
+      "",
+      msg,
+      ""
+    ]
