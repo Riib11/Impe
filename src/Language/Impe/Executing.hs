@@ -1,11 +1,9 @@
 module Language.Impe.Executing where
 
 import Control.Applicative
-import Control.Lens hiding (Context, locally)
-import Control.Monad.State as State
--- import Data.List as List hiding (delete, insert)
--- import Data.Map as Map
--- import Data.Maybe as Maybe
+import Control.Lens hiding (Context, set)
+import Control.Monad.State as State hiding (get)
+import Data.Map as Map
 import Language.Impe.Grammar
 import Text.Printf
 
@@ -22,11 +20,13 @@ TODO: description
 type Executing a = StateT Context (Either Error) a
 
 data Context = Context
-  { _closures :: Store Name Closure,
-    _variables :: Store Name Value
+  { _scopes :: [Scope]
   }
 
-type Store k v = [(k, v)]
+data Scope = Scope
+  { _closures :: Map Name (Maybe Closure),
+    _variables :: Map Name (Maybe Value)
+  }
 
 type Closure = ([Name], Instruction)
 
@@ -34,6 +34,7 @@ type Value = Expression
 
 type Error = String
 
+makeLenses ''Scope
 makeLenses ''Context
 
 {-
@@ -46,8 +47,14 @@ runExecuting c = runStateT c emptyContext
 emptyContext :: Context
 emptyContext =
   Context
-    { _closures = [],
-      _variables = []
+    { _scopes = [emptyScope]
+    }
+
+emptyScope :: Scope
+emptyScope =
+  Scope
+    { _closures = Map.empty,
+      _variables = Map.empty
     }
 
 throw :: Error -> Executing a
@@ -75,24 +82,26 @@ executeInstruction :: Instruction -> Executing (Maybe Value)
 executeInstruction = \case
   Block insts -> newScope do
     foldM (\result -> ((result <|>) <$>) . executeInstruction) Nothing insts
-  Declaration _ _ ->
+  Declaration x _ -> do
+    declare variables x
     return Nothing
   Assignment x e -> do
-    setVariable x =<< evaluateExpression e
+    set variables x =<< evaluateExpression e
     return Nothing
   Function f params _ inst -> do
-    setClosure f (fst <$> params, inst)
+    declare closures f
+    set closures f (fst <$> params, inst)
     return Nothing
   Conditional e inst1 inst2 ->
     evaluateExpression e >>= \case
       Bool True -> newScope $ executeInstruction inst1
       Bool False -> newScope $ executeInstruction inst2
-      _ -> type_prohibited "conditional condition must be of type `Bool`."
+      _ -> type_prohibited $ printf "The condition `%s` must be of type `%s`." (show e) (show BoolType)
   Loop e inst ->
     evaluateExpression e >>= \case
       Bool True -> newScope $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
-      _ -> type_prohibited "loop condition must be of type `Bool`."
+      _ -> type_prohibited $ printf "The condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e ->
     Just <$> evaluateExpression e
 
@@ -102,10 +111,10 @@ executeInstruction = \case
 
 evaluateExpression :: Expression -> Executing Value
 evaluateExpression = \case
-  Reference x -> getVariable x
+  Reference x -> get variables x
   Application f es -> newScope do
-    (xs, inst) <- getClosure f
-    mapM_ (\(x, e) -> setVariable x =<< evaluateExpression e) (zip xs es)
+    (xs, inst) <- get closures f
+    mapM_ (\(x, e) -> set variables x =<< evaluateExpression e) (zip xs es)
     executeInstruction inst >>= \case
       Just e -> return e
       Nothing -> type_prohibited "function body must return."
@@ -117,103 +126,46 @@ evaluateExpression = \case
 
 newScope :: Executing a -> Executing a
 newScope c = do
-  vars <- use variables -- capture original variables
-  clos <- use closures -- capture original closures
-  a <- c -- do scoped computation
-  resetVariables vars -- reset shadowed variables
-  resetClosures clos -- reset shadowed closures
-  return a -- result of scoped computation
+  scopes %= (emptyScope :) -- push new empty inner scope
+  a <- c
+  scopes %= tail -- pop inner scope
+  return a
 
-resetVariables :: Store Name Value -> Executing ()
-resetVariables varsOld = go =<< use variables
-  where
-    go :: Store Name Value -> Executing ()
-    go vars =
-      if all (uncurry (==)) $ zip (keys vars) (keys varsOld)
-        then -- base
-          return ()
-        else -- induction
-        case vars of
-          (x, _) : vars' -> do
-            case lookup x varsOld of -- shadowed by new scope?
-              Just v -> setVariable x v -- then reset to old value
-              Nothing -> deleteVariable x -- else delete from scope
-            go vars'
-          _ -> impossible "A new scope could not have deleted variables."
+declare :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing ()
+declare field k =
+  scopes . ix 0 . field . at k .= Just Nothing
 
-resetClosures :: [(Name, Closure)] -> Executing ()
-resetClosures closOld = go =<< use closures
-  where
-    go clos =
-      if all (uncurry (==)) $ zip (keys clos) (keys closOld)
-        then -- base
-          return ()
-        else -- induction
-        case clos of
-          (f, _) : clos' -> do
-            case lookup f closOld of -- shadowed by new scope?
-              Just clo -> setClosure f clo -- then reset to old closure
-              Nothing -> deleteClosure f -- else delete from scope
-            go clos'
-          _ -> impossible "A new scope could not have deleted closures."
-
-{-
-## Store
--}
-
-getClosure :: Name -> Executing Closure
-getClosure f =
-  closures `uses` lookup f >>= \case
-    Just clo -> return clo
-    Nothing -> throw $ printf "the function\n\n  %s\n\n is not declared before its mention." (show f)
-
-setClosure :: Name -> Closure -> Executing ()
-setClosure f clo = closures `modifying` insert f clo
-
-deleteClosure :: Name -> Executing ()
-deleteClosure f = closures `modifying` delete f
-
-getVariable :: Name -> Executing Value
-getVariable x =
-  variables `uses` lookup x >>= \case
-    Just v -> return v
-    Nothing -> throw $ printf "the variable\n\n  %s\n\nis not declared before its mention." (show x)
-
-setVariable :: Name -> Value -> Executing ()
-setVariable x v = variables `modifying` insert x v
-
-deleteVariable :: Name -> Executing ()
-deleteVariable x = variables `modifying` delete x
-
-{-
-## Store
--}
-
-keys :: Store k v -> [k]
-keys = map fst
-
-values :: Store k v -> [v]
-values = map snd
-
--- at key insert value in store
--- if key exists, then overwrite old value
--- otherwise, prepend new entry to store
-insert :: Eq k => k -> v -> Store k v -> Store k v
-insert k v sOrig = go sOrig
+set :: Lens' Scope (Map Name (Maybe v)) -> Name -> v -> Executing ()
+set field k v = scopes %= go
   where
     go = \case
-      [] -> (k, v) : sOrig
-      (k', v') : s' ->
-        if k == k'
-          then (k, v) : s'
-          else (k', v') : go s'
+      [] -> type_prohibited $ printf "The name `%s` cannot not be mentioned before its declaration." (show k)
+      scp : scps ->
+        case scp ^. field . at k of
+          Just _ -> (field . at k .~ Just (Just v)) scp : scps
+          Nothing -> scp : go scps
 
--- at key delete entry in store
--- only first entry with key is deleted
-delete :: Eq k => k -> Store k v -> Store k v
-delete k = \case
-  [] -> []
-  (k', v') : s ->
-    if k == k'
-      then s
-      else (k', v') : delete k s
+get :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing v
+get field k =
+  foldMapBy (<|>) Nothing (^. field . at k) <$> use scopes >>= \case
+    Just (Just v) -> return v
+    Just Nothing -> throw $ printf "The name `%s` is used before its assignment." (show k)
+    Nothing -> type_prohibited $ printf "Then name `%s` cannot be mentioned before its declaration." (show k)
+
+-- declareClosure :: Name -> Executing ()
+-- declareClosure = undefined
+
+-- setClosure :: Name -> Closure -> Executing ()
+-- setClosure = undefined
+
+-- getClosure :: Name -> Executing Closure
+-- getClosure = undefined
+
+-- declareVariable :: Name -> Executing ()
+-- declareVariable = undefined
+
+-- setVariable :: Name -> Value -> Executing ()
+-- setVariable = undefined
+
+-- getVariable :: Name -> Executing Value
+-- getVariable = undefined

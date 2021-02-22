@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9ddef3d10dc0390a8da6d88f8e9b733ef7193c211fd9548635f0d16eabb46b0f
+-- hash: 8396cea00bfe5767f1c1db1137b98916bdf25d8c629a3712fb11758583eae4ab
 
 name:           impe
 version:        0.1.0.0
@@ -36,7 +36,7 @@ library
       Paths_impe
   hs-source-dirs:
       src
-  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes
   ghc-options: -Wall
   build-depends:
       base >=4.7 && <5

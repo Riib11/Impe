@@ -33,6 +33,8 @@ library:
     - LambdaCase
     - BlockArguments
     - TemplateHaskell
+    # - FlexibleContexts
+    - RankNTypes
   ghc-options:
     - -Wall
 
