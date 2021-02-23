@@ -25,6 +25,7 @@ dependencies:
   - mtl
   - lens
   - containers
+  - parsec
 
 library:
   source-dirs: src
@@ -37,17 +38,19 @@ library:
     - RankNTypes
   ghc-options:
     - -Wall
+    - -Wno-missing-signatures
+    - -Wno-unused-do-bind
 
-executables:
-  impe-exe:
-    main: Main.hs
-    source-dirs: app
-    ghc-options:
-      - -threaded
-      - -rtsopts
-      - -with-rtsopts=-N
-    dependencies:
-      - impe
+# executables:
+#   impe-exe:
+#     main: Main.hs
+#     source-dirs: app
+#     ghc-options:
+#       - -threaded
+#       - -rtsopts
+#       - -with-rtsopts=-N
+#     dependencies:
+#       - impe
 
 tests:
   impe-test:
