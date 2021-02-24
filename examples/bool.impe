@@ -1,31 +1,29 @@
-{
-  and(p:bool, q:bool): bool =
-    if p then
-      if q then
-        return true;
-      else
-        return false;
+and(p:bool, q:bool): bool =
+  if p then
+    if q then
+      return true;
+    else
+      return false;
+  else
+    return false;
+
+or(p:bool, q:bool): bool =
+  if p then
+    return true;
+  else 
+    if q then 
+      return true;
     else
       return false;
 
-  or(p:bool, q:bool): bool =
-    if p then
-      return true;
-    else 
-      if q then 
-        return true;
-      else
-        return false;
+not(p:bool): bool = 
+  if p then
+    return false;
+  else
+    return true;
 
-  not(p:bool): bool = 
-    if p then
-      return false;
-    else
-      return true;
+xor(p:bool, q:bool): bool =
+  return and(or(p, q), not(and(p, q)));
 
-  xor(p:bool, q:bool): bool =
-    return and(or(p, q), not(and(p, q)));
-
-  nand(p:bool, q:bool): bool =
-    return not(and(p, q));
-}
+nand(p:bool, q:bool): bool =
+  return not(and(p, q));

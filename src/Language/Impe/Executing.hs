@@ -80,7 +80,7 @@ impossible msg = error $ printf "[impossible] %s" msg
 
 type_prohibited_primitive :: Name -> [Expression] -> a
 type_prohibited_primitive f es =
-  type_prohibited $ printf "The perhaps unrecognized primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s" (show f) (show es)
+  type_prohibited $ printf "the (perhaps unrecognized) primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s" (show f) (show es)
 
 {-
 ## Processing
@@ -88,21 +88,36 @@ type_prohibited_primitive f es =
 
 executeProgram :: Program -> Executing ()
 executeProgram = \case
-  Program inst -> do
-    mapM_
-      ( \(x, _, e) ->
-          do
-            declare variables x
-            set variables x e
-      )
-      primitive_variables
-    mapM_
-      ( \(f, _, xs) -> do
-          declare closures f
-          set closures f (xs, PrimitiveFunctionBody f xs)
-      )
-      primitive_functions
-    void $ executeInstruction inst
+  Program insts -> do
+    executePrelude
+    mapM_ executeInstruction insts
+    executeMain
+
+executePrelude :: Executing ()
+executePrelude = do
+  mapM_
+    ( \(x, _) ->
+        do
+          declare variables x
+          set variables x undefined -- TODO
+    )
+    primitive_variables
+  mapM_
+    ( \(f, params, _) -> do
+        declare closures f
+        set closures f (fst <$> params, PrimitiveFunctionBody f (fst <$> params))
+    )
+    primitive_functions
+
+executeMain :: Executing ()
+executeMain =
+  get' closures mainName >>= \case
+    Just ([], _) ->
+      void $ executeInstruction (ProcedureCall mainName [])
+    Just (_, _) ->
+      type_prohibited $ "the `main` function must not take any arguments."
+    Nothing ->
+      return ()
 
 {-
 ## Executing
@@ -126,16 +141,23 @@ executeInstruction = \case
     evaluateExpression e >>= \case
       Bool True -> newScope $ executeInstruction inst1
       Bool False -> newScope $ executeInstruction inst2
-      _ -> type_prohibited $ printf "The condition `%s` must be of type `%s`." (show e) (show BoolType)
+      _ -> type_prohibited $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Loop e inst ->
     evaluateExpression e >>= \case
       Bool True -> newScope $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
-      _ -> type_prohibited $ printf "The condition `%s` must be of type `%s`." (show e) (show BoolType)
+      _ -> type_prohibited $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e ->
     Just <$> evaluateExpression e
-  FunctionCall f es -> do
-    void $ evaluateExpression $ Application f es
+  ProcedureCall f es -> newScope do
+    (xs, inst) <- get closures f
+    mapM_
+      ( \(x, e) -> do
+          declare variables x
+          set variables x =<< evaluateExpression e
+      )
+      (zip xs es)
+    void $ executeInstruction inst
     return Nothing
   PrimitiveFunctionBody f xs ->
     executePrimitiveFunctionBody f xs
@@ -160,6 +182,12 @@ executePrimitiveFunctionBody f xs = do
 ## Evaluation
 -}
 
+evaluateInstruction :: Instruction -> Executing Value
+evaluateInstruction inst =
+  executeInstruction inst >>= \case
+    Just v -> return v
+    Nothing -> type_prohibited $ printf "expected instruction `%s` to return a value." (show inst)
+
 evaluateExpression :: Expression -> Executing Value
 evaluateExpression = \case
   Reference x -> get variables x
@@ -171,9 +199,7 @@ evaluateExpression = \case
           set variables x =<< evaluateExpression e
       )
       (zip xs es)
-    executeInstruction inst >>= \case
-      Just e -> return e
-      Nothing -> type_prohibited "function body must return."
+    evaluateInstruction inst
   v -> return v
 
 {-
@@ -195,7 +221,7 @@ set :: Lens' Scope (Map Name (Maybe v)) -> Name -> v -> Executing ()
 set field k v = scopes %= go
   where
     go = \case
-      [] -> type_prohibited $ printf "The name `%s` cannot not be set before its declaration." (show k)
+      [] -> type_prohibited $ printf "the name `%s` cannot not be set before its declaration." (show k)
       scp : scps ->
         case scp ^. field . at k of
           Just _ -> (field . at k .~ Just (Just v)) scp : scps
@@ -205,8 +231,15 @@ get :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing v
 get field k =
   foldMapBy (<|>) Nothing (^. field . at k) <$> use scopes >>= \case
     Just (Just v) -> return v
-    Just Nothing -> throw $ printf "The name `%s` cannot be mentioned before its assignment." (show k)
-    Nothing -> type_prohibited $ printf "Then name `%s` cannot be mentioned before its declaration." (show k)
+    Just Nothing -> throw $ printf "the name `%s` cannot be mentioned before its assignment." (show k)
+    Nothing -> type_prohibited $ printf "the name `%s` cannot be mentioned before its declaration." (show k)
+
+get' :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing (Maybe v)
+get' field k =
+  foldMapBy (<|>) Nothing (^. field . at k) <$> use scopes >>= \case
+    Just (Just v) -> return $ Just v
+    Just Nothing -> return Nothing
+    Nothing -> return Nothing
 
 writeOutput :: String -> Executing ()
 writeOutput s =

@@ -1,7 +1,7 @@
 module Language.Impe.Grammar where
 
 data Program
-  = Program Instruction
+  = Program [Instruction]
   deriving (Show, Eq)
 
 data Instruction
@@ -12,12 +12,13 @@ data Instruction
   | Conditional Expression Instruction Instruction
   | Loop Expression Instruction
   | Return Expression
-  | FunctionCall Name [Expression]
-  | PrimitiveFunctionBody Name [Name]
+  | ProcedureCall Name [Expression] -- procedures are functions that don't return a value.
+  | PrimitiveFunctionBody Name [Name] -- placeholder for primitive function bodies.
   deriving (Show, Eq)
 
 data Type
-  = UnitType
+  = VoidType
+  | UnitType
   | IntType
   | BoolType
   | FunctionType [Type] Type
@@ -33,4 +34,15 @@ data Expression
 
 newtype Name
   = Name String
-  deriving (Show, Eq, Ord)
+  deriving (Eq, Ord)
+
+mainName :: Name
+mainName = Name "main"
+
+{-
+## Show instances
+-}
+
+-- TODO
+instance Show Name where
+  show (Name x) = x

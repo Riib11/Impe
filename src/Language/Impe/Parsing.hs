@@ -10,9 +10,9 @@ import Text.ParserCombinators.Parsec
 
 program :: Parser Program
 program = do
-  inst <- instruction
+  insts <- many instruction
   eof
-  return $ Program inst
+  return $ Program insts
 
 {-
 ## Instruction
@@ -29,7 +29,7 @@ instruction = do
         try loop,
         try declaration,
         try assignment,
-        try functioncall
+        try procedureCall
       ]
   return inst
 
@@ -102,11 +102,11 @@ return_ = do
   return $ Return e
 
 -- f(e, ...)
-functioncall :: Parser Instruction
-functioncall = do
+procedureCall :: Parser Instruction
+procedureCall = do
   Application f es <- application
   semi
-  return $ FunctionCall f es
+  return $ ProcedureCall f es
 
 {-
 ## Type
@@ -115,11 +115,18 @@ functioncall = do
 type_ :: Parser Type
 type_ =
   choice
-    [ try unitType,
+    [ try voidType,
+      try unitType,
       try intType,
       try boolType,
       try functionType
     ]
+
+-- void
+voidType :: Parser Type
+voidType = do
+  symbol "void"
+  return VoidType
 
 -- unit
 unitType :: Parser Type
@@ -139,7 +146,7 @@ boolType = do
   symbol "bool"
   return BoolType
 
--- (type_, ...) -> type_
+-- (s, ...) -> t
 functionType :: Parser Type
 functionType = do
   params <- parens . commaSep $ type_

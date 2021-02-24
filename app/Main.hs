@@ -39,7 +39,6 @@ main = do
             Left err -> display "executing: error" err
             Right (e, ctx) -> do
               display "executing: success" (show ctx)
-              display "executing: return value" (show e)
               unless (null $ ctx ^. input) $
                 display "executing: input" (show $ ctx ^. input)
               unless (null $ ctx ^. output) $

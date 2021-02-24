@@ -1,15 +1,20 @@
 module Language.Impe.Primitive where
 
+import Control.Lens
 import Language.Impe.Grammar
 
-primitive_variables :: [(Name, Type, Expression)]
+primitive_variables :: [(Name, Type)]
 primitive_variables =
   []
 
-primitive_functions :: [(Name, Type, [Name])]
+primitive_functions :: [(Name, [(Name, Type)], Type)]
 primitive_functions =
-  [ (Name "&&", FunctionType [BoolType, BoolType] BoolType, Name <$> ["p", "q"]),
-    (Name "||", FunctionType [BoolType, BoolType] BoolType, Name <$> ["p", "q"]),
-    (Name "print_bool", FunctionType [BoolType] UnitType, Name <$> ["v"]),
-    (Name "print_int", FunctionType [IntType] UnitType, Name <$> ["v"])
-  ]
+  make
+    <$> [ ("&&", [("p", BoolType), ("q", BoolType)], BoolType),
+          ("||", [("p", BoolType), ("q", BoolType)], BoolType),
+          ("print_bool", [("v", BoolType)], VoidType),
+          ("print_int", [("v", IntType)], VoidType)
+        ]
+  where
+    make :: (String, [(String, Type)], Type) -> (Name, [(Name, Type)], Type)
+    make (f, params, t) = (Name f, (_1 %~ Name) <$> params, t)

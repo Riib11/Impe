@@ -1,8 +1,9 @@
 module Language.Impe.Typing where
 
-import Control.Lens hiding (Context, locally)
-import Control.Monad.State as State
-import Data.Map as Map
+import Control.Lens hiding (Context, set)
+import Control.Monad.State hiding (get)
+import qualified Control.Monad.State as State (get)
+import Data.Map as Map hiding (map)
 import Language.Impe.Grammar
 import Language.Impe.Primitive
 import Text.Printf
@@ -20,13 +21,23 @@ TODO: description
 type Typing a = StateT Context (Either Error) a
 
 data Context = Context
-  { _typings :: Map Name Type
+  { _variables :: Map Name Type,
+    _closures :: Map Name Type
   }
-  deriving (Show)
 
 type Error = String
 
 makeLenses ''Context
+
+instance Show Context where
+  show ctx =
+    unlines
+      [ "typing context:",
+        "  variables:",
+        unlines . map (\(x, t) -> printf "    %s: %s" (show x) (show t)) . toList $ ctx ^. variables,
+        "  closures:",
+        unlines . map (\(f, t) -> printf "    %s: %s" (show f) (show t)) . toList $ ctx ^. closures
+      ]
 
 {-
 ### Interface
@@ -38,11 +49,12 @@ runTyping c = runStateT c emptyContext
 emptyContext :: Context
 emptyContext =
   Context
-    { _typings = Map.empty
+    { _variables = Map.empty,
+      _closures = Map.empty
     }
 
-throw :: Error -> Typing a
-throw = lift . Left
+type_error :: Error -> Typing a
+type_error = lift . Left
 
 {-
 ## Processing
@@ -50,20 +62,43 @@ throw = lift . Left
 
 processProgram :: Program -> Typing ()
 processProgram = \case
-  Program inst -> do
-    mapM_ (\(x, t, _) -> setTyping x t) primitive_variables
-    mapM_ (\(f, t, _) -> setTyping f t) primitive_functions
-    checkInstruction inst UnitType
+  Program insts -> do
+    processPrelude
+    mapM_ (flip checkInstruction VoidType) insts
+    processMain
+
+processPrelude :: Typing ()
+processPrelude = do
+  mapM_
+    ( \(x, t) ->
+        set variables x t
+    )
+    primitive_variables
+  mapM_
+    ( \(f, params, t) ->
+        set closures f (FunctionType (snd <$> params) t)
+    )
+    primitive_functions
+
+-- return . unsafePerformIO $ print (f, t)
+
+processMain :: Typing ()
+processMain =
+  use (closures . at mainName) >>= \case
+    Just (FunctionType [] VoidType) -> return ()
+    Just (FunctionType _ VoidType) -> type_error $ printf "The function `main` cannot have any arguments."
+    Just (FunctionType _ _) -> type_error $ printf "The function `main` cannot cannot have non-void return type."
+    Just _ -> type_error $ printf "The function `main` must be a function type that returns void."
+    Nothing -> return ()
 
 {-
 ## Checking
 -}
 
 checkInstruction :: Instruction -> Type -> Typing ()
-checkInstruction inst t =
-  synthesizeInstruction inst >>= \case
-    Just t' -> void $ unifyTypes t t'
-    Nothing -> throw $ printf "instruction\n\n  %s\n\nhas no return type when it is expected to have return type\n\n  %s\n\n" (show inst) (show t)
+checkInstruction inst t = do
+  t' <- synthesizeInstruction inst
+  void $ unifyTypes t t'
 
 checkExpression :: Expression -> Type -> Typing ()
 checkExpression e t = do
@@ -74,40 +109,54 @@ checkExpression e t = do
 ## Synthesizing
 -}
 
-synthesizeInstruction :: Instruction -> Typing (Maybe Type)
-synthesizeInstruction = \case
-  Block insts -> locally do
-    ts <- mapM synthesizeInstruction insts
-    foldM unifyReturnTypes Nothing ts
+synthesizeInstruction :: Instruction -> Typing Type
+synthesizeInstruction inst =
+  synthesizeInstructionStep inst >>= \case
+    Just t -> return t
+    Nothing -> return VoidType
+
+synthesizeInstructionStep :: Instruction -> Typing (Maybe Type)
+synthesizeInstructionStep = \case
+  Block insts -> newScope do
+    ts <- mapM synthesizeInstructionStep insts
+    foldM unifyStepTypes Nothing ts
   Declaration x t -> do
-    setTyping x t
+    when (t == VoidType) $
+      type_error $ printf "cannot declare variable `%s` to be of type `void`."
+    set variables x t
     return Nothing
   Assignment x e -> do
-    t <- getTyping x
+    t <- get variables x
     t' <- synthesizeExpression e
     void $ unifyTypes t t'
     return Nothing
   Function f params t inst -> do
-    setTyping f $ FunctionType (snd <$> params) t
-    locally do
-      mapM_ (uncurry setTyping) params
+    set closures f $ FunctionType (snd <$> params) t
+    newScope do
+      mapM_ (uncurry (set variables)) params
       checkInstruction inst t
     return Nothing
   Conditional e inst1 inst2 -> do
     checkExpression e BoolType
-    mbt1 <- locally $ synthesizeInstruction inst1
-    mbt2 <- locally $ synthesizeInstruction inst2
-    unifyReturnTypes mbt1 mbt2
+    mbt1 <- newScope $ synthesizeInstructionStep inst1
+    mbt2 <- newScope $ synthesizeInstructionStep inst2
+    unifyStepTypes mbt1 mbt2
   Loop e inst -> do
     checkExpression e BoolType
-    locally $ synthesizeInstruction inst
+    newScope $ synthesizeInstructionStep inst
   Return e ->
     Just <$> synthesizeExpression e
-  FunctionCall f es -> do
-    void . synthesizeExpression $ Application f es
+  ProcedureCall f es -> do
+    get closures f >>= \case
+      FunctionType ss t -> do
+        unless (length es == length ss) $
+          type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
+        mapM_ (uncurry checkExpression) (zip es ss)
+        return t
+      fType -> type_error $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s\n\n" (show f) (show fType) (show es)
     return Nothing
   PrimitiveFunctionBody f xs ->
-    error $ printf "`%s` should not arise from source code." (show $ PrimitiveFunctionBody f xs)
+    error $ printf "the type `%s` should not arise from source code." (show $ PrimitiveFunctionBody f xs)
 
 synthesizeExpression :: Expression -> Typing Type
 synthesizeExpression = \case
@@ -118,48 +167,47 @@ synthesizeExpression = \case
   Int _ ->
     return IntType
   Reference x ->
-    getTyping x
+    get variables x
   Application f es ->
-    getTyping f >>= \case
+    get closures f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
-          throw $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
+          type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
         mapM_ (uncurry checkExpression) (zip es ss)
         return t
-      fType -> throw $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s\n\n" (show f) (show fType) (show es)
+      fType -> type_error $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s\n\n" (show f) (show fType) (show es)
 
 {-
 ## Unification
 -}
 
-unifyReturnTypes :: Maybe Type -> Maybe Type -> Typing (Maybe Type)
-unifyReturnTypes Nothing Nothing = return Nothing
-unifyReturnTypes Nothing (Just t) = return $ Just t
-unifyReturnTypes (Just s) Nothing = return $ Just s
-unifyReturnTypes (Just s) (Just t) = Just <$> unifyTypes s t
+unifyStepTypes :: Maybe Type -> Maybe Type -> Typing (Maybe Type)
+unifyStepTypes Nothing Nothing = return Nothing
+unifyStepTypes Nothing (Just t) = return $ Just t
+unifyStepTypes (Just s) Nothing = return $ Just s
+unifyStepTypes (Just s) (Just t) = Just <$> unifyTypes s t
 
 unifyTypes :: Type -> Type -> Typing Type
 unifyTypes s t =
   if s == t
     then return s
-    else throw $ printf "cannot unify type\n\n %s\n\nwith type\n\n  %s\n\n" (show s) (show t)
+    else type_error $ printf "cannot unify type\n\n  %s\n\nwith type\n\n  %s\n\n" (show s) (show t)
 
 {-
 ## Utilities
 -}
 
-locally :: Typing a -> Typing a
-locally c = do
-  st <- get
+newScope :: Typing a -> Typing a
+newScope c = do
+  st <- State.get
   (a, _) <- lift $ runStateT c st
   return a
 
-setTyping :: Name -> Type -> Typing ()
-setTyping x t =
-  typings . at x .= Just t
+set :: Lens' Context (Map Name v) -> Name -> v -> Typing ()
+set field k v = field . at k .= Just v
 
-getTyping :: Name -> Typing Type
-getTyping x =
-  use (typings . at x) >>= \case
-    Just t -> return t
-    Nothing -> throw $ printf "the name\n\n  %s\n\nis not declared before its mention." (show x)
+get :: Lens' Context (Map Name v) -> Name -> Typing v
+get field k =
+  use (field . at k) >>= \case
+    Just v -> return v
+    Nothing -> type_error $ printf "the name `%s` cannot be mentioned before its declaration." (show k)

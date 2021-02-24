@@ -1,4 +1,6 @@
-{
-  function f (x:bool) : bool = return true;
-  return f (true);
+f(x: bool): bool =
+  return true;
+
+main(): void = {
+  print_bool(true);
 }
