@@ -1,0 +1,7 @@
+{
+  b: bool;
+  b = &&(true, false);
+  print_bool(b);
+
+  return unit;
+}

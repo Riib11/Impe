@@ -4,6 +4,7 @@ import Control.Lens hiding (Context, locally)
 import Control.Monad.State as State
 import Data.Map as Map
 import Language.Impe.Grammar
+import Language.Impe.Primitive
 import Text.Printf
 
 {-
@@ -21,6 +22,7 @@ type Typing a = StateT Context (Either Error) a
 data Context = Context
   { _typings :: Map Name Type
   }
+  deriving (Show)
 
 type Error = String
 
@@ -48,7 +50,10 @@ throw = lift . Left
 
 processProgram :: Program -> Typing ()
 processProgram = \case
-  Program inst -> checkInstruction inst UnitType
+  Program inst -> do
+    mapM_ (\(x, t, _) -> setTyping x t) primitive_variables
+    mapM_ (\(f, t, _) -> setTyping f t) primitive_functions
+    checkInstruction inst UnitType
 
 {-
 ## Checking
@@ -98,6 +103,11 @@ synthesizeInstruction = \case
     locally $ synthesizeInstruction inst
   Return e ->
     Just <$> synthesizeExpression e
+  FunctionCall f es -> do
+    void . synthesizeExpression $ Application f es
+    return Nothing
+  PrimitiveFunctionBody f xs ->
+    error $ printf "`%s` should not arise from source code." (show $ PrimitiveFunctionBody f xs)
 
 synthesizeExpression :: Expression -> Typing Type
 synthesizeExpression = \case
@@ -146,7 +156,7 @@ locally c = do
 
 setTyping :: Name -> Type -> Typing ()
 setTyping x t =
-  typings . at x .= Just t -- shadowing
+  typings . at x .= Just t
 
 getTyping :: Name -> Typing Type
 getTyping x =

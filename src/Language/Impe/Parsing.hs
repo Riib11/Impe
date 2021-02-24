@@ -22,13 +22,14 @@ instruction :: Parser Instruction
 instruction = do
   inst <-
     choice
-      [ block,
-        return_,
-        declaration,
-        assignment,
-        function,
-        conditional,
-        loop
+      [ try block,
+        try return_,
+        try function,
+        try conditional,
+        try loop,
+        try declaration,
+        try assignment,
+        try functioncall
       ]
   return inst
 
@@ -59,6 +60,7 @@ assignment = do
 -- function f (x1:t1, ...) : t = inst
 function :: Parser Instruction
 function = do
+  -- symbol "function"
   f <- name
   params <- (parens . commaSep) do
     x <- name
@@ -99,6 +101,13 @@ return_ = do
   semi
   return $ Return e
 
+-- f(e, ...)
+functioncall :: Parser Instruction
+functioncall = do
+  Application f es <- application
+  semi
+  return $ FunctionCall f es
+
 {-
 ## Type
 -}
@@ -106,10 +115,10 @@ return_ = do
 type_ :: Parser Type
 type_ =
   choice
-    [ unitType,
-      intType,
-      boolType,
-      functionType
+    [ try unitType,
+      try intType,
+      try boolType,
+      try functionType
     ]
 
 -- unit
@@ -145,11 +154,12 @@ functionType = do
 expression :: Parser Expression
 expression =
   choice
-    [ unit,
-      bool,
-      int,
-      application,
-      reference
+    [ try unit,
+      try bool,
+      try int,
+      try application,
+      try reference,
+      parens expression
     ]
 
 -- unit
@@ -157,18 +167,6 @@ unit :: Parser Expression
 unit = do
   symbol "unit"
   return Unit
-
--- -- true | false
--- bool :: Parser Expression
--- bool =
---   oneOf
---     [ do
---         symbol "true"
---         return $ Bool True,
---       do
---         symbol "false"
---         return $ Bool False
---     ]
 
 -- true | false
 bool :: Parser Expression

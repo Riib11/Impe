@@ -17,14 +17,16 @@ language =
       Token.commentEnd = "*/",
       Token.commentLine = "//",
       Token.nestedComments = False,
-      Token.identStart = letter <|> char '_',
-      Token.identLetter = alphaNum <|> char '_',
-      Token.opStart = oneOf "+-*/&|",
-      Token.opLetter = oneOf "+-*/&|",
-      Token.reservedNames = ["function", "unit", "true", "false"],
-      Token.reservedOpNames = ["+", "-", "*", "/", "&", "|"],
+      Token.identStart = letter <|> char '_' <|> oneOf specials,
+      Token.identLetter = alphaNum <|> char '_' <|> oneOf specials,
+      Token.opStart = choice [], -- oneOf "+-*/&|",
+      Token.opLetter = choice [], -- oneOf "+-*/&|",
+      Token.reservedNames = [],
+      Token.reservedOpNames = [], -- ["+", "-", "*", "/", "&", "|"],
       Token.caseSensitive = True
     }
+  where
+    specials = "~!@#$%^&*<>-=?/"
 
 tokenParser :: Token.TokenParser LexState
 tokenParser = Token.makeTokenParser language

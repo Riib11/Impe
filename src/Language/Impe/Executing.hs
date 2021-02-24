@@ -5,6 +5,7 @@ import Control.Lens hiding (Context, set)
 import Control.Monad.State as State hiding (get)
 import Data.Map as Map
 import Language.Impe.Grammar
+import Language.Impe.Primitive
 import Text.Printf
 
 {-
@@ -20,13 +21,17 @@ TODO: description
 type Executing a = StateT Context (Either Error) a
 
 data Context = Context
-  { _scopes :: [Scope]
+  { _scopes :: [Scope],
+    _input :: [String],
+    _output :: [String]
   }
+  deriving (Show)
 
 data Scope = Scope
   { _closures :: Map Name (Maybe Closure),
     _variables :: Map Name (Maybe Value)
   }
+  deriving (Show)
 
 type Closure = ([Name], Instruction)
 
@@ -47,7 +52,14 @@ runExecuting c = runStateT c emptyContext
 emptyContext :: Context
 emptyContext =
   Context
-    { _scopes = [emptyScope]
+    { _scopes =
+        [ Scope
+            { _closures = Map.empty,
+              _variables = Map.empty
+            }
+        ],
+      _input = [],
+      _output = []
     }
 
 emptyScope :: Scope
@@ -66,13 +78,31 @@ type_prohibited msg = error $ printf "[type-prohibited] %s" msg
 impossible :: String -> a
 impossible msg = error $ printf "[impossible] %s" msg
 
+type_prohibited_primitive :: Name -> [Expression] -> a
+type_prohibited_primitive f es =
+  type_prohibited $ printf "The perhaps unrecognized primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s" (show f) (show es)
+
 {-
 ## Processing
 -}
 
 executeProgram :: Program -> Executing ()
 executeProgram = \case
-  Program inst -> void $ executeInstruction inst
+  Program inst -> do
+    mapM_
+      ( \(x, _, e) ->
+          do
+            declare variables x
+            set variables x e
+      )
+      primitive_variables
+    mapM_
+      ( \(f, _, xs) -> do
+          declare closures f
+          set closures f (xs, PrimitiveFunctionBody f xs)
+      )
+      primitive_functions
+    void $ executeInstruction inst
 
 {-
 ## Executing
@@ -104,6 +134,27 @@ executeInstruction = \case
       _ -> type_prohibited $ printf "The condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e ->
     Just <$> evaluateExpression e
+  FunctionCall f es -> do
+    void $ evaluateExpression $ Application f es
+    return Nothing
+  PrimitiveFunctionBody f xs ->
+    executePrimitiveFunctionBody f xs
+
+executePrimitiveFunctionBody :: Name -> [Name] -> Executing (Maybe Value)
+executePrimitiveFunctionBody f xs = do
+  es <- mapM (get variables) xs
+  case (f, es) of
+    (Name "&&", [Bool p, Bool q]) ->
+      return . Just $ Bool (p && q)
+    (Name "||", [Bool p, Bool q]) ->
+      return . Just $ Bool (p || q)
+    (Name "print_bool", [Bool v]) -> do
+      writeOutput (show v)
+      return . Just $ Unit
+    (Name "print_int", [Int v]) -> do
+      writeOutput (show v)
+      return . Just $ Unit
+    _ -> type_prohibited_primitive f es
 
 {-
 ## Evaluation
@@ -114,7 +165,12 @@ evaluateExpression = \case
   Reference x -> get variables x
   Application f es -> newScope do
     (xs, inst) <- get closures f
-    mapM_ (\(x, e) -> set variables x =<< evaluateExpression e) (zip xs es)
+    mapM_
+      ( \(x, e) -> do
+          declare variables x
+          set variables x =<< evaluateExpression e
+      )
+      (zip xs es)
     executeInstruction inst >>= \case
       Just e -> return e
       Nothing -> type_prohibited "function body must return."
@@ -139,7 +195,7 @@ set :: Lens' Scope (Map Name (Maybe v)) -> Name -> v -> Executing ()
 set field k v = scopes %= go
   where
     go = \case
-      [] -> type_prohibited $ printf "The name `%s` cannot not be mentioned before its declaration." (show k)
+      [] -> type_prohibited $ printf "The name `%s` cannot not be set before its declaration." (show k)
       scp : scps ->
         case scp ^. field . at k of
           Just _ -> (field . at k .~ Just (Just v)) scp : scps
@@ -149,23 +205,17 @@ get :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing v
 get field k =
   foldMapBy (<|>) Nothing (^. field . at k) <$> use scopes >>= \case
     Just (Just v) -> return v
-    Just Nothing -> throw $ printf "The name `%s` is used before its assignment." (show k)
+    Just Nothing -> throw $ printf "The name `%s` cannot be mentioned before its assignment." (show k)
     Nothing -> type_prohibited $ printf "Then name `%s` cannot be mentioned before its declaration." (show k)
 
--- declareClosure :: Name -> Executing ()
--- declareClosure = undefined
+writeOutput :: String -> Executing ()
+writeOutput s =
+  output %= (s :)
 
--- setClosure :: Name -> Closure -> Executing ()
--- setClosure = undefined
-
--- getClosure :: Name -> Executing Closure
--- getClosure = undefined
-
--- declareVariable :: Name -> Executing ()
--- declareVariable = undefined
-
--- setVariable :: Name -> Value -> Executing ()
--- setVariable = undefined
-
--- getVariable :: Name -> Executing Value
--- getVariable = undefined
+readInput :: Executing (Maybe String)
+readInput =
+  use input >>= \case
+    [] -> return Nothing
+    s : input' -> do
+      input .= input'
+      return $ Just s

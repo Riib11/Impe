@@ -1,0 +1,4 @@
+{
+  function f (x:bool) : bool = return true;
+  return f (true);
+}

@@ -12,6 +12,8 @@ data Instruction
   | Conditional Expression Instruction Instruction
   | Loop Expression Instruction
   | Return Expression
+  | FunctionCall Name [Expression]
+  | PrimitiveFunctionBody Name [Name]
   deriving (Show, Eq)
 
 data Type
