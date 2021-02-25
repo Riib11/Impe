@@ -17,8 +17,8 @@ language =
       Token.commentEnd = "*/",
       Token.commentLine = "//",
       Token.nestedComments = False,
-      Token.identStart = letter <|> char '_' <|> oneOf specials,
-      Token.identLetter = alphaNum <|> char '_' <|> oneOf specials,
+      Token.identStart = letter <|> oneOf specials,
+      Token.identLetter = alphaNum <|> oneOf specials,
       Token.opStart = choice [], -- oneOf "+-*/&|",
       Token.opLetter = choice [], -- oneOf "+-*/&|",
       Token.reservedNames = [],
@@ -26,7 +26,7 @@ language =
       Token.caseSensitive = True
     }
   where
-    specials = "~!@#$%^&*<>-=?/"
+    specials = "~!@#$%^&*<>-=_+?/"
 
 tokenParser :: Token.TokenParser LexState
 tokenParser = Token.makeTokenParser language
@@ -46,6 +46,8 @@ commaSep = Token.commaSep tokenParser
 symbol = Token.symbol tokenParser
 
 integer = Token.integer tokenParser
+
+natural = Token.natural tokenParser
 
 --
 

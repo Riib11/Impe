@@ -2,5 +2,5 @@ f(x: bool): bool =
   return true;
 
 main(): void = {
-  print_bool(true);
+  output_bool(true);
 }

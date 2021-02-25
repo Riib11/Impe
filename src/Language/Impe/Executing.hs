@@ -2,8 +2,10 @@ module Language.Impe.Executing where
 
 import Control.Applicative
 import Control.Lens hiding (Context, set)
-import Control.Monad.State as State hiding (get)
-import Data.Map as Map
+import Control.Monad.State hiding (get)
+import qualified Control.Monad.State as State (get)
+import Data.List (intercalate)
+import Data.Map as Map hiding (map)
 import Language.Impe.Grammar
 import Language.Impe.Primitive
 import Text.Printf
@@ -25,22 +27,58 @@ data Context = Context
     _input :: [String],
     _output :: [String]
   }
-  deriving (Show)
 
 data Scope = Scope
-  { _closures :: Map Name (Maybe Closure),
-    _variables :: Map Name (Maybe Value)
+  { _variables :: Map Name (Maybe Value),
+    _closures :: Map Name (Maybe Closure)
   }
-  deriving (Show)
 
 type Closure = ([Name], Instruction)
 
 type Value = Expression
 
-type Error = String
+data Error = Error String Context
 
 makeLenses ''Scope
 makeLenses ''Context
+
+instance Show Context where
+  show ctx =
+    unlines
+      [ "executing context:",
+        "  scopes:",
+        unlines $ map (uncurry show_scope) (zip (reverse $ ctx ^. scopes) [0 ..]),
+        "  input:",
+        "    " ++ show (ctx ^. input),
+        "  output:",
+        "    " ++ show (ctx ^. output)
+      ]
+    where
+      show_scope :: Scope -> Int -> String
+      show_scope sco i =
+        unlines
+          [ "    #" ++ show i ++ ":",
+            "      variables:",
+            unlines
+              . map
+                ( \(x, mb_v) ->
+                    case mb_v of
+                      Just v -> printf "        %s = %s" (show x) (show v)
+                      Nothing -> printf "        %s undefined" (show x)
+                )
+              . toList
+              $ sco ^. variables,
+            "      closures:",
+            unlines
+              . map
+                ( \(f, clo) ->
+                    case clo of
+                      Just (xs, inst) -> printf "        %s(%s) = %s" (show f) (intercalate ", " $ show <$> xs) (show inst)
+                      Nothing -> printf "        %s undefined" (show f)
+                )
+              . toList
+              $ sco ^. closures
+          ]
 
 {-
 ### Interface
@@ -69,8 +107,10 @@ emptyScope =
       _variables = Map.empty
     }
 
-throw :: Error -> Executing a
-throw = lift . Left
+throw :: String -> Executing a
+throw msg = do
+  ctx <- State.get
+  lift . Left $ Error msg ctx
 
 type_prohibited :: String -> a
 type_prohibited msg = error $ printf "[type-prohibited] %s" msg
@@ -149,14 +189,15 @@ executeInstruction = \case
       _ -> type_prohibited $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e ->
     Just <$> evaluateExpression e
-  ProcedureCall f es -> newScope do
+  ProcedureCall f args -> newScope do
     (xs, inst) <- get closures f
     mapM_
       ( \(x, e) -> do
+          v <- evaluateExpression e
           declare variables x
-          set variables x =<< evaluateExpression e
+          set variables x v
       )
-      (zip xs es)
+      (zip xs args)
     void $ executeInstruction inst
     return Nothing
   PrimitiveFunctionBody f xs ->
@@ -170,10 +211,16 @@ executePrimitiveFunctionBody f xs = do
       return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) ->
       return . Just $ Bool (p || q)
-    (Name "print_bool", [Bool v]) -> do
+    (Name "+", [Int x, Int y]) ->
+      return . Just $ Int (x + y)
+    (Name "-", [Int x, Int y]) ->
+      return . Just $ Int (x - y)
+    (Name "*", [Int x, Int y]) ->
+      return . Just $ Int (x * y)
+    (Name "output_bool", [Bool v]) -> do
       writeOutput (show v)
       return . Just $ Unit
-    (Name "print_int", [Int v]) -> do
+    (Name "output_int", [Int v]) -> do
       writeOutput (show v)
       return . Just $ Unit
     _ -> type_prohibited_primitive f es
@@ -195,8 +242,9 @@ evaluateExpression = \case
     (xs, inst) <- get closures f
     mapM_
       ( \(x, e) -> do
+          v <- evaluateExpression e
           declare variables x
-          set variables x =<< evaluateExpression e
+          set variables x v
       )
       (zip xs es)
     evaluateInstruction inst

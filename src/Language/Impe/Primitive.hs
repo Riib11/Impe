@@ -12,8 +12,11 @@ primitive_functions =
   make
     <$> [ ("&&", [("p", BoolType), ("q", BoolType)], BoolType),
           ("||", [("p", BoolType), ("q", BoolType)], BoolType),
-          ("print_bool", [("v", BoolType)], VoidType),
-          ("print_int", [("v", IntType)], VoidType)
+          ("+", [("x", IntType), ("y", IntType)], IntType),
+          ("-", [("x", IntType), ("y", IntType)], IntType),
+          ("*", [("x", IntType), ("y", IntType)], IntType),
+          ("output_bool", [("v", BoolType)], VoidType),
+          ("output_int", [("v", IntType)], VoidType)
         ]
   where
     make :: (String, [(String, Type)], Type) -> (Name, [(Name, Type)], Type)

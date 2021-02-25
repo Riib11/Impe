@@ -199,8 +199,8 @@ unifyTypes s t =
 
 newScope :: Typing a -> Typing a
 newScope c = do
-  st <- State.get
-  (a, _) <- lift $ runStateT c st
+  ctx <- State.get
+  (a, _) <- lift $ runStateT c ctx
   return a
 
 set :: Lens' Context (Map Name v) -> Name -> v -> Typing ()

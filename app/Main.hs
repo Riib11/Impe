@@ -36,7 +36,8 @@ main = do
           --
           putStrLn "[executing]"
           case runExecuting (executeProgram prog) of
-            Left err -> display "executing: error" err
+            Left (Error msg ctx) -> do
+              display "executing: error" $ unlines [msg, show ctx]
             Right (e, ctx) -> do
               display "executing: success" (show ctx)
               unless (null $ ctx ^. input) $

@@ -48,11 +48,11 @@ declaration = do
   semi
   return $ Declaration x t
 
--- x = e
+-- x <- e
 assignment :: Parser Instruction
 assignment = do
   x <- name
-  eq
+  symbol "<-"
   e <- expression
   semi
   return $ Assignment x e
@@ -60,7 +60,6 @@ assignment = do
 -- function f (x1:t1, ...) : t = inst
 function :: Parser Instruction
 function = do
-  -- symbol "function"
   f <- name
   params <- (parens . commaSep) do
     x <- name
@@ -166,7 +165,7 @@ expression =
       try int,
       try application,
       try reference,
-      parens expression
+      try $ parens expression
     ]
 
 -- unit
@@ -189,7 +188,10 @@ bool =
 
 int :: Parser Expression
 int = do
-  i <- fromInteger <$> integer
+  i <-
+    fromInteger <$> do
+      optional (char '-')
+      natural
   return $ Int i
 
 -- x
