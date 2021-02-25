@@ -15,8 +15,8 @@ data Instruction
   | Conditional Expression Instruction Instruction
   | Loop Expression Instruction
   | Return Expression
-  | ProcedureCall Name [Expression] -- procedures are functions that don't return a value.
-  | PrimitiveFunctionBody Name [Name] -- placeholder for primitive function bodies.
+  | ProcedureCall Name [Expression] -- procedures are functions that don't return a value
+  | PrimitiveFunctionBody Name [Name] -- placeholder for primitive function bodies
   deriving (Eq)
 
 data Type

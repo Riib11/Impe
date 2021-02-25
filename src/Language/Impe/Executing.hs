@@ -34,13 +34,12 @@ data Scope = Scope
   { _variableUIDs :: Map Name UID,
     _functionUIDs :: Map Name UID
   }
-  deriving (Show)
 
 type UID = (Name, IndexUID)
 
 type IndexUID = Int
 
-type Closure = ([Name], Instruction)
+type Closure = ([Name], [Scope], Instruction)
 
 type Value = Expression
 
@@ -53,8 +52,9 @@ instance Show Context where
   show ctx =
     unlines
       [ "executing context:",
-        "  scopes:",
-        unlines $ map (uncurry show_scope) (zip (reverse $ ctx ^. scopes) [0 ..]),
+        -- can't print scopes since are recursively nested
+        -- "  scopes:",
+        -- unlines $ show <$> (zip (reverse $ ctx ^. scopes) [(0 :: Int) ..]),
         "  variables UIDs:",
         unlines
           . map
@@ -68,7 +68,8 @@ instance Show Context where
         unlines
           . map
             ( \((f, i), mb_clo) -> case mb_clo of
-                Just clo -> printf "    %s#%s = %s" (show f) (show i) (show clo)
+                -- can't print closure since is recursively nested
+                Just _ -> printf "    %s#%s = ..." (show f) (show i)
                 Nothing -> printf "    %s#%s undefined" (show f) (show i)
             )
           . toList
@@ -78,16 +79,16 @@ instance Show Context where
         "  output:",
         "    " ++ show (ctx ^. output)
       ]
-    where
-      show_scope :: Scope -> Int -> String
-      show_scope sco sco_i =
-        unlines
-          [ "    [" ++ show sco_i ++ "]:",
-            "      variables:",
-            unlines . map (\(x, (_, i)) -> printf "        %s#%s" (show x) (show i)) . toList $ sco ^. variableUIDs,
-            "      functions:",
-            unlines . map (\(f, (_, i)) -> printf "        %s#%s" (show f) (show i)) . toList $ sco ^. functionUIDs
-          ]
+
+instance Show Scope where
+  show scp =
+    unlines
+      [ "    [" ++ show scp ++ "]:",
+        "      variables:",
+        unlines . map (\(x, (_, i)) -> printf "        %s#%s" (show x) (show i)) . toList $ scp ^. variableUIDs,
+        "      functions:",
+        unlines . map (\(f, (_, i)) -> printf "        %s#%s" (show f) (show i)) . toList $ scp ^. functionUIDs
+      ]
 
 {-
 ### Interface
@@ -165,9 +166,10 @@ executePrelude = do
 executeMain :: Executing ()
 executeMain =
   getFunction' mainName >>= \case
-    Just ([], _) ->
-      void $ executeInstruction (ProcedureCall mainName [])
-    Just (_, _) ->
+    Just ([], scps, _) ->
+      enterScopes scps . void $
+        executeInstruction (ProcedureCall mainName [])
+    Just (_, _, _) ->
       type_prohibited $ "the `main` function must not take any arguments."
     Nothing ->
       return ()
@@ -202,17 +204,18 @@ executeInstruction = \case
       _ -> type_prohibited $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e ->
     Just <$> evaluateExpression e
-  ProcedureCall f args -> newScope do
-    (xs, inst) <- getFunction f
-    mapM_
-      ( \(x, e) -> do
-          v <- evaluateExpression e
-          declareVariable x
-          setVariable x v
-      )
-      (zip xs args)
-    void $ executeInstruction inst
-    return Nothing
+  ProcedureCall f args -> do
+    (xs, scps, inst) <- getFunction f
+    enterScopes scps do
+      mapM_
+        ( \(x, e) -> do
+            v <- evaluateExpression e
+            declareVariable x
+            setVariable x v
+        )
+        (zip xs args)
+      void $ executeInstruction inst
+      return Nothing
   PrimitiveFunctionBody f xs ->
     executePrimitiveFunctionBody f xs
 
@@ -251,16 +254,17 @@ evaluateInstruction inst =
 evaluateExpression :: Expression -> Executing Value
 evaluateExpression = \case
   Reference x -> getVariable x
-  Application f es -> newScope do
-    (xs, inst) <- getFunction f
-    mapM_
-      ( \(x, e) -> do
-          v <- evaluateExpression e
-          declareVariable x
-          setVariable x v
-      )
-      (zip xs es)
-    evaluateInstruction inst
+  Application f es -> do
+    (xs, scps, inst) <- getFunction f
+    enterScopes scps do
+      mapM_
+        ( \(x, e) -> do
+            v <- evaluateExpression e
+            declareVariable x
+            setVariable x v
+        )
+        (zip xs es)
+      evaluateInstruction inst
   v -> return v
 
 {-
@@ -268,10 +272,14 @@ evaluateExpression = \case
 -}
 
 newScope :: Executing a -> Executing a
-newScope c = do
-  scopes %= (emptyScope :) -- push new empty inner scope
+newScope = enterScopes [emptyScope]
+
+enterScopes :: [Scope] -> Executing a -> Executing a
+enterScopes scps c = do
+  scpsOriginal <- use scopes
+  scopes %= (scps ++) -- enter new scopes
   a <- c
-  scopes %= tail -- pop inner scope
+  scopes .= scpsOriginal -- reset to original scopes
   return a
 
 -- UID
@@ -314,14 +322,16 @@ setVariable x v = go =<< use scopes
           Just uid -> variables . ix uid .= Just v
           Nothing -> go scps
 
-setFunction :: Name -> Closure -> Executing ()
-setFunction f clo = go =<< use scopes
+setFunction :: Name -> ([Name], Instruction) -> Executing ()
+setFunction f (xs, inst) = go =<< use scopes
   where
     go = \case
       [] -> type_prohibited $ printf "the function `%s` cannot be set before its declaration." (show f)
       scp : scps ->
         case scp ^. functionUIDs . at f of
-          Just uid -> functions . ix uid .= Just clo
+          Just uid -> do
+            scpsLocal <- use scopes -- capture local scopes
+            functions . ix uid .= Just (xs, scpsLocal, inst)
           Nothing -> go scps
 
 -- get

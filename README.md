@@ -13,7 +13,24 @@ An imperative, interpreted, simple, extendible language.
 
 <!-- TODO -->
 
+## Tools
+
+This project demonstrates the following tools:
+
+- [parsec](https://hackage.haskell.org/package/parsec)
+- [mtl](https://hackage.haskell.org/package/mtl)
+- [lens](https://hackage.haskell.org/package/lens)
+- [optparse-simple](https://hackage.haskell.org/package/optparse-simple)
+
 ## Features
+
+- branching (if-then-else)
+- looping (while-do)
+- functions
+  - nested function definitions
+  - nested scope capturing
+- procedures (functions that don't return a value)
+- variables are references
 
 <!-- TODO -->
 
@@ -23,9 +40,7 @@ An imperative, interpreted, simple, extendible language.
 
 ## To Do
 
-- capturing scope (by value/reference) when defining functions
 - pointers (perhaps define whole new language for this)
-- show instances for grammar (or use Pretty clas?)
 - better type and execution errors e.g. line numbers and better messages (redue
   the amount of abstraction for errors and stuff i.e. give message in place for
   each error)
