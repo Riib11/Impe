@@ -52,7 +52,7 @@ instance Show Context where
   show ctx =
     unlines
       [ "executing context:",
-        -- can't print scopes since are recursively nested
+        -- TODO: can't print scopes since are recursively nested?
         -- "  scopes:",
         -- unlines $ show <$> (zip (reverse $ ctx ^. scopes) [(0 :: Int) ..]),
         "  variables UIDs:",
@@ -68,7 +68,7 @@ instance Show Context where
         unlines
           . map
             ( \((f, i), mb_clo) -> case mb_clo of
-                -- can't print closure since is recursively nested
+                -- TODO: can't print closure since is recursively nested?
                 Just _ -> printf "    %s#%s = ..." (show f) (show i)
                 Nothing -> printf "    %s#%s undefined" (show f) (show i)
             )
