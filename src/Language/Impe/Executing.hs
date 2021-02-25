@@ -4,8 +4,7 @@ import Control.Applicative
 import Control.Lens hiding (Context, set)
 import Control.Monad.State hiding (get)
 import qualified Control.Monad.State as State (get)
-import Data.List (intercalate)
-import Data.Map as Map hiding (map)
+import Data.Map as Map hiding (foldr, map)
 import Language.Impe.Grammar
 import Language.Impe.Primitive
 import Text.Printf
@@ -24,14 +23,22 @@ type Executing a = StateT Context (Either Error) a
 
 data Context = Context
   { _scopes :: [Scope],
+    _variables :: Map UID (Maybe Value),
+    _functions :: Map UID (Maybe Closure),
+    _indexUID :: IndexUID,
     _input :: [String],
     _output :: [String]
   }
 
 data Scope = Scope
-  { _variables :: Map Name (Maybe Value),
-    _closures :: Map Name (Maybe Closure)
+  { _variableUIDs :: Map Name UID,
+    _functionUIDs :: Map Name UID
   }
+  deriving (Show)
+
+type UID = (Name, IndexUID)
+
+type IndexUID = Int
 
 type Closure = ([Name], Instruction)
 
@@ -48,6 +55,24 @@ instance Show Context where
       [ "executing context:",
         "  scopes:",
         unlines $ map (uncurry show_scope) (zip (reverse $ ctx ^. scopes) [0 ..]),
+        "  variables UIDs:",
+        unlines
+          . map
+            ( \((x, i), mb_v) -> case mb_v of
+                Just v -> printf "    %s#%s = %s" (show x) (show i) (show v)
+                Nothing -> printf "    %s#%s undefined" (show x) (show i)
+            )
+          . toList
+          $ ctx ^. variables,
+        "  functions UIDs:",
+        unlines
+          . map
+            ( \((f, i), mb_clo) -> case mb_clo of
+                Just clo -> printf "    %s#%s = %s" (show f) (show i) (show clo)
+                Nothing -> printf "    %s#%s undefined" (show f) (show i)
+            )
+          . toList
+          $ ctx ^. functions,
         "  input:",
         "    " ++ show (ctx ^. input),
         "  output:",
@@ -55,29 +80,13 @@ instance Show Context where
       ]
     where
       show_scope :: Scope -> Int -> String
-      show_scope sco i =
+      show_scope sco sco_i =
         unlines
-          [ "    #" ++ show i ++ ":",
+          [ "    [" ++ show sco_i ++ "]:",
             "      variables:",
-            unlines
-              . map
-                ( \(x, mb_v) ->
-                    case mb_v of
-                      Just v -> printf "        %s = %s" (show x) (show v)
-                      Nothing -> printf "        %s undefined" (show x)
-                )
-              . toList
-              $ sco ^. variables,
-            "      closures:",
-            unlines
-              . map
-                ( \(f, clo) ->
-                    case clo of
-                      Just (xs, inst) -> printf "        %s(%s) = %s" (show f) (intercalate ", " $ show <$> xs) (show inst)
-                      Nothing -> printf "        %s undefined" (show f)
-                )
-              . toList
-              $ sco ^. closures
+            unlines . map (\(x, (_, i)) -> printf "        %s#%s" (show x) (show i)) . toList $ sco ^. variableUIDs,
+            "      functions:",
+            unlines . map (\(f, (_, i)) -> printf "        %s#%s" (show f) (show i)) . toList $ sco ^. functionUIDs
           ]
 
 {-
@@ -90,12 +99,10 @@ runExecuting c = runStateT c emptyContext
 emptyContext :: Context
 emptyContext =
   Context
-    { _scopes =
-        [ Scope
-            { _closures = Map.empty,
-              _variables = Map.empty
-            }
-        ],
+    { _scopes = [emptyScope],
+      _indexUID = indexUID_init,
+      _variables = Map.empty,
+      _functions = Map.empty,
       _input = [],
       _output = []
     }
@@ -103,22 +110,28 @@ emptyContext =
 emptyScope :: Scope
 emptyScope =
   Scope
-    { _closures = Map.empty,
-      _variables = Map.empty
+    { _functionUIDs = Map.empty,
+      _variableUIDs = Map.empty
     }
 
-throw :: String -> Executing a
-throw msg = do
+indexUID_init :: IndexUID
+indexUID_init = 0
+
+indexUID_next :: IndexUID -> IndexUID
+indexUID_next = (1 +)
+
+execution_error :: String -> Executing a
+execution_error msg = do
   ctx <- State.get
   lift . Left $ Error msg ctx
 
-type_prohibited :: String -> a
-type_prohibited msg = error $ printf "[type-prohibited] %s" msg
+type_prohibited :: String -> Executing a
+type_prohibited msg = execution_error $ printf "[type-prohibited] %s" msg
 
-impossible :: String -> a
-impossible msg = error $ printf "[impossible] %s" msg
+impossible :: String -> Executing a
+impossible msg = execution_error $ printf "[impossible] %s" msg
 
-type_prohibited_primitive :: Name -> [Expression] -> a
+type_prohibited_primitive :: Name -> [Expression] -> Executing a
 type_prohibited_primitive f es =
   type_prohibited $ printf "the (perhaps unrecognized) primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s" (show f) (show es)
 
@@ -138,20 +151,20 @@ executePrelude = do
   mapM_
     ( \(x, _) ->
         do
-          declare variables x
-          set variables x undefined -- TODO
+          declareVariable x
+          setVariable x undefined -- TODO
     )
     primitive_variables
   mapM_
     ( \(f, params, _) -> do
-        declare closures f
-        set closures f (fst <$> params, PrimitiveFunctionBody f (fst <$> params))
+        declareFunction f
+        setFunction f (fst <$> params, PrimitiveFunctionBody f (fst <$> params))
     )
     primitive_functions
 
 executeMain :: Executing ()
 executeMain =
-  get' closures mainName >>= \case
+  getFunction' mainName >>= \case
     Just ([], _) ->
       void $ executeInstruction (ProcedureCall mainName [])
     Just (_, _) ->
@@ -168,14 +181,14 @@ executeInstruction = \case
   Block insts -> newScope do
     foldM (\result -> ((result <|>) <$>) . executeInstruction) Nothing insts
   Declaration x _ -> do
-    declare variables x
+    declareVariable x
     return Nothing
   Assignment x e -> do
-    set variables x =<< evaluateExpression e
+    setVariable x =<< evaluateExpression e
     return Nothing
   Function f params _ inst -> do
-    declare closures f
-    set closures f (fst <$> params, inst)
+    declareFunction f
+    setFunction f (fst <$> params, inst)
     return Nothing
   Conditional e inst1 inst2 ->
     evaluateExpression e >>= \case
@@ -190,12 +203,12 @@ executeInstruction = \case
   Return e ->
     Just <$> evaluateExpression e
   ProcedureCall f args -> newScope do
-    (xs, inst) <- get closures f
+    (xs, inst) <- getFunction f
     mapM_
       ( \(x, e) -> do
           v <- evaluateExpression e
-          declare variables x
-          set variables x v
+          declareVariable x
+          setVariable x v
       )
       (zip xs args)
     void $ executeInstruction inst
@@ -205,8 +218,8 @@ executeInstruction = \case
 
 executePrimitiveFunctionBody :: Name -> [Name] -> Executing (Maybe Value)
 executePrimitiveFunctionBody f xs = do
-  es <- mapM (get variables) xs
-  case (f, es) of
+  args <- mapM getVariable xs
+  case (f, args) of
     (Name "&&", [Bool p, Bool q]) ->
       return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) ->
@@ -223,7 +236,7 @@ executePrimitiveFunctionBody f xs = do
     (Name "output_int", [Int v]) -> do
       writeOutput (show v)
       return . Just $ Unit
-    _ -> type_prohibited_primitive f es
+    _ -> type_prohibited_primitive f args
 
 {-
 ## Evaluation
@@ -237,14 +250,14 @@ evaluateInstruction inst =
 
 evaluateExpression :: Expression -> Executing Value
 evaluateExpression = \case
-  Reference x -> get variables x
+  Reference x -> getVariable x
   Application f es -> newScope do
-    (xs, inst) <- get closures f
+    (xs, inst) <- getFunction f
     mapM_
       ( \(x, e) -> do
           v <- evaluateExpression e
-          declare variables x
-          set variables x v
+          declareVariable x
+          setVariable x v
       )
       (zip xs es)
     evaluateInstruction inst
@@ -261,33 +274,95 @@ newScope c = do
   scopes %= tail -- pop inner scope
   return a
 
-declare :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing ()
-declare field k =
-  scopes . ix 0 . field . at k .= Just Nothing
+-- UID
 
-set :: Lens' Scope (Map Name (Maybe v)) -> Name -> v -> Executing ()
-set field k v = scopes %= go
+newIndexUID :: Executing IndexUID
+newIndexUID = do
+  i <- use indexUID
+  indexUID %= indexUID_next
+  return i
+
+newUID :: Name -> Executing UID
+newUID x = do
+  i <- newIndexUID
+  return (x, i)
+
+-- declare
+
+declareVariable :: Name -> Executing ()
+declareVariable x = do
+  uid <- newUID x
+  scopes . ix 0 . variableUIDs . at x .= Just uid
+  variables . at uid .= Just Nothing
+
+declareFunction :: Name -> Executing ()
+declareFunction f = do
+  uid <- newUID f
+  scopes . ix 0 . functionUIDs . at f .= Just uid
+  functions . at uid .= Just Nothing
+
+-- set
+
+setVariable :: Name -> Value -> Executing ()
+setVariable x v = go =<< use scopes
+  where
+    go :: [Scope] -> Executing ()
+    go = \case
+      [] -> type_prohibited $ printf "the variable `%s` cannot be set before its declaration." (show x)
+      scp : scps ->
+        case scp ^. variableUIDs . at x of
+          Just uid -> variables . ix uid .= Just v
+          Nothing -> go scps
+
+setFunction :: Name -> Closure -> Executing ()
+setFunction f clo = go =<< use scopes
   where
     go = \case
-      [] -> type_prohibited $ printf "the name `%s` cannot not be set before its declaration." (show k)
+      [] -> type_prohibited $ printf "the function `%s` cannot be set before its declaration." (show f)
       scp : scps ->
-        case scp ^. field . at k of
-          Just _ -> (field . at k .~ Just (Just v)) scp : scps
-          Nothing -> scp : go scps
+        case scp ^. functionUIDs . at f of
+          Just uid -> functions . ix uid .= Just clo
+          Nothing -> go scps
 
-get :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing v
-get field k =
-  foldMapBy (<|>) Nothing (^. field . at k) <$> use scopes >>= \case
-    Just (Just v) -> return v
-    Just Nothing -> throw $ printf "the name `%s` cannot be mentioned before its assignment." (show k)
-    Nothing -> type_prohibited $ printf "the name `%s` cannot be mentioned before its declaration." (show k)
+-- get
 
-get' :: Lens' Scope (Map Name (Maybe v)) -> Name -> Executing (Maybe v)
-get' field k =
-  foldMapBy (<|>) Nothing (^. field . at k) <$> use scopes >>= \case
-    Just (Just v) -> return $ Just v
-    Just Nothing -> return Nothing
+getVariable :: Name -> Executing Value
+getVariable x =
+  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> use scopes >>= \case
+    Just uid ->
+      use (variables . at uid) >>= \case
+        Just (Just v) -> return v
+        _ -> execution_error $ printf "the variable `%s` cannot be mentioned before its assignment." (show x)
+    Nothing -> type_prohibited $ printf "the variable `%s` cannot be mentioned before its declaration." (show x)
+
+getVariable' :: Name -> Executing (Maybe Value)
+getVariable' x =
+  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> use scopes >>= \case
+    Just uid ->
+      use (variables . at uid) >>= \case
+        Just (Just v) -> return $ Just v
+        _ -> return Nothing
     Nothing -> return Nothing
+
+getFunction :: Name -> Executing Closure
+getFunction f =
+  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> use scopes >>= \case
+    Just uid ->
+      use (functions . at uid) >>= \case
+        Just (Just clo) -> return clo
+        _ -> execution_error $ printf "the function `%s` cannot be mentioned before its assignment." (show f)
+    Nothing -> type_prohibited $ printf "the function `%s` cannot be mentioned before its declaration." (show f)
+
+getFunction' :: Name -> Executing (Maybe Closure)
+getFunction' f =
+  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> use scopes >>= \case
+    Just uid ->
+      use (functions . at uid) >>= \case
+        Just (Just clo) -> return $ Just clo
+        _ -> return Nothing
+    Nothing -> return Nothing
+
+-- I/O
 
 writeOutput :: String -> Executing ()
 writeOutput s =

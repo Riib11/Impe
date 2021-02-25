@@ -1,8 +1,6 @@
 x: int;
 x <- 0;
 
-
-
 f(): void = {
   x: int;
   x <- 0;
@@ -13,3 +11,6 @@ f(): void = {
   output_int(x);
 }
 
+main(): void = {
+  f();
+}

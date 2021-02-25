@@ -29,3 +29,4 @@ An imperative, interpreted, simple, extendible language.
 - better type and execution errors e.g. line numbers and better messages (redue
   the amount of abstraction for errors and stuff i.e. give message in place for
   each error)
+- rename "Typing" to "Typechecking

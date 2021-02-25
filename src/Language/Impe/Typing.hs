@@ -22,7 +22,7 @@ type Typing a = StateT Context (Either Error) a
 
 data Context = Context
   { _variables :: Map Name Type,
-    _closures :: Map Name Type
+    _functions :: Map Name Type
   }
 
 type Error = String
@@ -35,8 +35,8 @@ instance Show Context where
       [ "typing context:",
         "  variables:",
         unlines . map (\(x, t) -> printf "    %s: %s" (show x) (show t)) . toList $ ctx ^. variables,
-        "  closures:",
-        unlines . map (\(f, t) -> printf "    %s: %s" (show f) (show t)) . toList $ ctx ^. closures
+        "  functions:",
+        unlines . map (\(f, t) -> printf "    %s: %s" (show f) (show t)) . toList $ ctx ^. functions
       ]
 
 {-
@@ -50,7 +50,7 @@ emptyContext :: Context
 emptyContext =
   Context
     { _variables = Map.empty,
-      _closures = Map.empty
+      _functions = Map.empty
     }
 
 type_error :: Error -> Typing a
@@ -76,7 +76,7 @@ processPrelude = do
     primitive_variables
   mapM_
     ( \(f, params, t) ->
-        set closures f (FunctionType (snd <$> params) t)
+        set functions f (FunctionType (snd <$> params) t)
     )
     primitive_functions
 
@@ -84,7 +84,7 @@ processPrelude = do
 
 processMain :: Typing ()
 processMain =
-  use (closures . at mainName) >>= \case
+  use (functions . at mainName) >>= \case
     Just (FunctionType [] VoidType) -> return ()
     Just (FunctionType _ VoidType) -> type_error $ printf "The function `main` cannot have any arguments."
     Just (FunctionType _ _) -> type_error $ printf "The function `main` cannot cannot have non-void return type."
@@ -131,7 +131,7 @@ synthesizeInstructionStep = \case
     void $ unifyTypes t t'
     return Nothing
   Function f params t inst -> do
-    set closures f $ FunctionType (snd <$> params) t
+    set functions f $ FunctionType (snd <$> params) t
     newScope do
       mapM_ (uncurry (set variables)) params
       checkInstruction inst t
@@ -147,7 +147,7 @@ synthesizeInstructionStep = \case
   Return e ->
     Just <$> synthesizeExpression e
   ProcedureCall f es -> do
-    get closures f >>= \case
+    get functions f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
           type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
@@ -169,7 +169,7 @@ synthesizeExpression = \case
   Reference x ->
     get variables x
   Application f es ->
-    get closures f >>= \case
+    get functions f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
           type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
