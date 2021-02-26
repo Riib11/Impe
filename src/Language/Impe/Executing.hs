@@ -1,16 +1,19 @@
 module Language.Impe.Executing where
 
 import Control.Applicative
-import Control.Lens hiding (Context, set)
-import Control.Monad.State hiding (get)
-import qualified Control.Monad.State as State (get)
+import Control.Lens
+import Control.Monad
 import Data.Map as Map hiding (foldr, map)
 import Language.Impe.Grammar
 import Language.Impe.Primitive
+import Polysemy
+import Polysemy.Error as Error
+import Polysemy.Output as Output
+import Polysemy.State as State
 import Text.Printf
 
 {-
-# Executing
+# Execution
 
 TODO: description
 -}
@@ -19,15 +22,13 @@ TODO: description
 ## Executing Computation
 -}
 
-type Executing a = StateT Context (Either Error) a
-
-data Context = Context
+data ExecutionContext = ExecutionContext
   { _scopes :: [Scope],
     _variables :: Map UID (Maybe Value),
     _functions :: Map UID (Maybe Closure),
     _indexUID :: IndexUID,
-    _input :: [String],
-    _output :: [String]
+    _inputs :: [String],
+    _outputs :: [String]
   }
 
 data Scope = Scope
@@ -43,15 +44,21 @@ type Closure = ([Name], [Scope], Instruction)
 
 type Value = Expression
 
-data Error = Error String Context
+data ExecutionError = ExecutionError String ExecutionContext
+
+type ExecutionLog = String
+
+type Execution a = Sem '[State ExecutionContext, Error ExecutionError, Output ExecutionLog] a
 
 makeLenses ''Scope
-makeLenses ''Context
+makeLenses ''ExecutionContext
 
-instance Show Context where
+-- instances
+
+instance Show ExecutionContext where
   show ctx =
     unlines
-      [ "executing context:",
+      [ "execution context:",
         -- TODO: can't print scopes since are recursively nested?
         -- "  scopes:",
         -- unlines $ show <$> (zip (reverse $ ctx ^. scopes) [(0 :: Int) ..]),
@@ -74,10 +81,10 @@ instance Show Context where
             )
           . toList
           $ ctx ^. functions,
-        "  input:",
-        "    " ++ show (ctx ^. input),
-        "  output:",
-        "    " ++ show (ctx ^. output)
+        "  inputs:",
+        "    " ++ show (ctx ^. inputs),
+        "  outputs:",
+        "    " ++ show (ctx ^. outputs)
       ]
 
 instance Show Scope where
@@ -90,22 +97,45 @@ instance Show Scope where
         unlines . map (\(f, (_, i)) -> printf "        %s#%s" (show f) (show i)) . toList $ scp ^. functionUIDs
       ]
 
+instance Show ExecutionError where
+  show = \case
+    ExecutionError msg ctx -> printf "%s\n\n%s" msg (show ctx)
+
 {-
 ### Interface
 -}
 
-runExecuting :: Executing a -> Either Error (a, Context)
-runExecuting c = runStateT c emptyContext
+runExecution ::
+  Execution a ->
+  ( [ExecutionLog],
+    Either ExecutionError (ExecutionContext, a)
+  )
+runExecution =
+  run
+    . runOutputList
+    . runError
+    . runState emptyExecutionContext
 
-emptyContext :: Context
-emptyContext =
-  Context
+execExecution ::
+  Execution a ->
+  ( [ExecutionLog],
+    Either ExecutionError ExecutionContext
+  )
+execExecution =
+  run
+    . runOutputList
+    . runError
+    . execState emptyExecutionContext
+
+emptyExecutionContext :: ExecutionContext
+emptyExecutionContext =
+  ExecutionContext
     { _scopes = [emptyScope],
       _indexUID = indexUID_init,
       _variables = Map.empty,
       _functions = Map.empty,
-      _input = [],
-      _output = []
+      _inputs = [],
+      _outputs = []
     }
 
 emptyScope :: Scope
@@ -121,18 +151,18 @@ indexUID_init = 0
 indexUID_next :: IndexUID -> IndexUID
 indexUID_next = (1 +)
 
-execution_error :: String -> Executing a
+execution_error :: String -> Execution a
 execution_error msg = do
   ctx <- State.get
-  lift . Left $ Error msg ctx
+  throw $ ExecutionError msg ctx
 
-type_prohibited :: String -> Executing a
+type_prohibited :: String -> Execution a
 type_prohibited msg = execution_error $ printf "[type-prohibited] %s" msg
 
-impossible :: String -> Executing a
+impossible :: String -> Execution a
 impossible msg = execution_error $ printf "[impossible] %s" msg
 
-type_prohibited_primitive :: Name -> [Expression] -> Executing a
+type_prohibited_primitive :: Name -> [Expression] -> Execution a
 type_prohibited_primitive f es =
   type_prohibited $ printf "the (perhaps unrecognized) primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s" (show f) (show es)
 
@@ -140,14 +170,14 @@ type_prohibited_primitive f es =
 ## Processing
 -}
 
-executeProgram :: Program -> Executing ()
+executeProgram :: Program -> Execution ()
 executeProgram = \case
   Program insts -> do
     executePrelude
     mapM_ executeInstruction insts
     executeMain
 
-executePrelude :: Executing ()
+executePrelude :: Execution ()
 executePrelude = do
   mapM_
     ( \(x, _) ->
@@ -163,7 +193,7 @@ executePrelude = do
     )
     primitive_functions
 
-executeMain :: Executing ()
+executeMain :: Execution ()
 executeMain =
   getFunction' mainName >>= \case
     Just ([], scps, _) ->
@@ -175,10 +205,10 @@ executeMain =
       return ()
 
 {-
-## Executing
+## Execution
 -}
 
-executeInstruction :: Instruction -> Executing (Maybe Value)
+executeInstruction :: Instruction -> Execution (Maybe Value)
 executeInstruction = \case
   Block insts -> newScope do
     foldM (\result -> ((result <|>) <$>) . executeInstruction) Nothing insts
@@ -219,7 +249,7 @@ executeInstruction = \case
   PrimitiveFunctionBody f xs ->
     executePrimitiveFunctionBody f xs
 
-executePrimitiveFunctionBody :: Name -> [Name] -> Executing (Maybe Value)
+executePrimitiveFunctionBody :: Name -> [Name] -> Execution (Maybe Value)
 executePrimitiveFunctionBody f xs = do
   args <- mapM getVariable xs
   case (f, args) of
@@ -233,10 +263,10 @@ executePrimitiveFunctionBody f xs = do
       return . Just $ Int (x - y)
     (Name "*", [Int x, Int y]) ->
       return . Just $ Int (x * y)
-    (Name "output_bool", [Bool v]) -> do
+    (Name "outputs_bool", [Bool v]) -> do
       writeOutput (show v)
       return . Just $ Unit
-    (Name "output_int", [Int v]) -> do
+    (Name "outputs_int", [Int v]) -> do
       writeOutput (show v)
       return . Just $ Unit
     _ -> type_prohibited_primitive f args
@@ -245,13 +275,13 @@ executePrimitiveFunctionBody f xs = do
 ## Evaluation
 -}
 
-evaluateInstruction :: Instruction -> Executing Value
+evaluateInstruction :: Instruction -> Execution Value
 evaluateInstruction inst =
   executeInstruction inst >>= \case
     Just v -> return v
     Nothing -> type_prohibited $ printf "expected instruction `%s` to return a value." (show inst)
 
-evaluateExpression :: Expression -> Executing Value
+evaluateExpression :: Expression -> Execution Value
 evaluateExpression = \case
   Reference x -> getVariable x
   Application f es -> do
@@ -271,117 +301,117 @@ evaluateExpression = \case
 ## Scope
 -}
 
-newScope :: Executing a -> Executing a
+newScope :: Execution a -> Execution a
 newScope = enterScopes [emptyScope]
 
-enterScopes :: [Scope] -> Executing a -> Executing a
+enterScopes :: [Scope] -> Execution a -> Execution a
 enterScopes scps c = do
-  scpsOriginal <- use scopes
-  scopes %= (scps ++) -- enter new scopes
+  scpsOriginal <- gets (^. scopes)
+  modify $ scopes %~ (scps ++) -- enter new scopes
   a <- c
-  scopes .= scpsOriginal -- reset to original scopes
+  modify $ scopes .~ scpsOriginal -- reset to original scopes
   return a
 
 -- UID
 
-newIndexUID :: Executing IndexUID
+newIndexUID :: Execution IndexUID
 newIndexUID = do
-  i <- use indexUID
-  indexUID %= indexUID_next
+  i <- gets (^. indexUID)
+  modify $ indexUID %~ indexUID_next
   return i
 
-newUID :: Name -> Executing UID
+newUID :: Name -> Execution UID
 newUID x = do
   i <- newIndexUID
   return (x, i)
 
 -- declare
 
-declareVariable :: Name -> Executing ()
+declareVariable :: Name -> Execution ()
 declareVariable x = do
   uid <- newUID x
-  scopes . ix 0 . variableUIDs . at x .= Just uid
-  variables . at uid .= Just Nothing
+  modify $ scopes . ix 0 . variableUIDs . at x .~ Just uid
+  modify $ variables . at uid .~ Just Nothing
 
-declareFunction :: Name -> Executing ()
+declareFunction :: Name -> Execution ()
 declareFunction f = do
   uid <- newUID f
-  scopes . ix 0 . functionUIDs . at f .= Just uid
-  functions . at uid .= Just Nothing
+  modify $ scopes . ix 0 . functionUIDs . at f .~ Just uid
+  modify $ functions . at uid .~ Just Nothing
 
 -- set
 
-setVariable :: Name -> Value -> Executing ()
-setVariable x v = go =<< use scopes
+setVariable :: Name -> Value -> Execution ()
+setVariable x v = go =<< gets (^. scopes)
   where
-    go :: [Scope] -> Executing ()
+    go :: [Scope] -> Execution ()
     go = \case
       [] -> type_prohibited $ printf "the variable `%s` cannot be set before its declaration." (show x)
       scp : scps ->
         case scp ^. variableUIDs . at x of
-          Just uid -> variables . ix uid .= Just v
+          Just uid -> modify $ variables . ix uid .~ Just v
           Nothing -> go scps
 
-setFunction :: Name -> ([Name], Instruction) -> Executing ()
-setFunction f (xs, inst) = go =<< use scopes
+setFunction :: Name -> ([Name], Instruction) -> Execution ()
+setFunction f (xs, inst) = go =<< gets (^. scopes)
   where
     go = \case
       [] -> type_prohibited $ printf "the function `%s` cannot be set before its declaration." (show f)
       scp : scps ->
         case scp ^. functionUIDs . at f of
           Just uid -> do
-            scpsLocal <- use scopes -- capture local scopes
-            functions . ix uid .= Just (xs, scpsLocal, inst)
+            scpsLocal <- gets (^. scopes) -- capture local scopes
+            modify $ functions . ix uid .~ Just (xs, scpsLocal, inst)
           Nothing -> go scps
 
 -- get
 
-getVariable :: Name -> Executing Value
+getVariable :: Name -> Execution Value
 getVariable x =
-  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> use scopes >>= \case
+  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> gets (^. scopes) >>= \case
     Just uid ->
-      use (variables . at uid) >>= \case
+      gets (^. variables . at uid) >>= \case
         Just (Just v) -> return v
         _ -> execution_error $ printf "the variable `%s` cannot be mentioned before its assignment." (show x)
     Nothing -> type_prohibited $ printf "the variable `%s` cannot be mentioned before its declaration." (show x)
 
-getVariable' :: Name -> Executing (Maybe Value)
+getVariable' :: Name -> Execution (Maybe Value)
 getVariable' x =
-  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> use scopes >>= \case
+  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> gets (^. scopes) >>= \case
     Just uid ->
-      use (variables . at uid) >>= \case
+      gets (^. variables . at uid) >>= \case
         Just (Just v) -> return $ Just v
         _ -> return Nothing
     Nothing -> return Nothing
 
-getFunction :: Name -> Executing Closure
+getFunction :: Name -> Execution Closure
 getFunction f =
-  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> use scopes >>= \case
+  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> gets (^. scopes) >>= \case
     Just uid ->
-      use (functions . at uid) >>= \case
+      gets (^. functions . at uid) >>= \case
         Just (Just clo) -> return clo
         _ -> execution_error $ printf "the function `%s` cannot be mentioned before its assignment." (show f)
     Nothing -> type_prohibited $ printf "the function `%s` cannot be mentioned before its declaration." (show f)
 
-getFunction' :: Name -> Executing (Maybe Closure)
+getFunction' :: Name -> Execution (Maybe Closure)
 getFunction' f =
-  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> use scopes >>= \case
+  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> gets (^. scopes) >>= \case
     Just uid ->
-      use (functions . at uid) >>= \case
+      gets (^. functions . at uid) >>= \case
         Just (Just clo) -> return $ Just clo
         _ -> return Nothing
     Nothing -> return Nothing
 
 -- I/O
 
-writeOutput :: String -> Executing ()
+writeOutput :: String -> Execution ()
 writeOutput s =
-  output %= (s :)
+  modify $ outputs %~ (s :)
 
-readInput :: Executing (Maybe String)
+readInput :: Execution (Maybe String)
 readInput =
-  use input >>= \case
+  gets (^. inputs) >>= \case
     [] -> return Nothing
-    s : input' -> do
-      input .= input'
+    s : inputs' -> do
+      modify $ inputs .~ inputs'
       return $ Just s

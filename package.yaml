@@ -22,6 +22,8 @@ description:
 
 dependencies:
   - base >= 4.7 && < 5
+  - polysemy
+  - polysemy-plugin
   - mtl
   - lens
   - containers
@@ -36,10 +38,16 @@ library:
     - BlockArguments
     - TemplateHaskell
     - RankNTypes
+    - FlexibleInstances
+    - MultiParamTypeClasses
+    - FlexibleContexts
+    - UndecidableInstances
+    - DataKinds
   ghc-options:
     - -Wall
     - -Wno-missing-signatures
     - -Wno-unused-do-bind
+    - -fplugin=Polysemy.Plugin
 
 executables:
   impe-exe:
@@ -49,6 +57,7 @@ executables:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
+      - -fplugin=Polysemy.Plugin
     dependencies:
       - impe
 
@@ -60,5 +69,6 @@ tests:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
+      - -fplugin=Polysemy.Plugin
     dependencies:
       - impe

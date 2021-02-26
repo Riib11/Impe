@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d330f543f97e5f75cdebd575bde3cefbddfec8d68d37387d7e649622abaa1168
+-- hash: fceadb0c8d20f361b9520703250099bf08cc2d88a89ac6f651bf8cc6f3fb4e61
 
 name:           impe
 version:        0.1.0.0
@@ -32,13 +32,13 @@ library
       Language.Impe.Lexing
       Language.Impe.Parsing
       Language.Impe.Primitive
-      Language.Impe.Typing
+      Language.Impe.Typechecking
   other-modules:
       Paths_impe
   hs-source-dirs:
       src
-  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes
-  ghc-options: -Wall -Wno-missing-signatures -Wno-unused-do-bind
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds
+  ghc-options: -Wall -Wno-missing-signatures -Wno-unused-do-bind -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
     , containers
@@ -46,6 +46,8 @@ library
     , mtl
     , optparse-simple
     , parsec
+    , polysemy
+    , polysemy-plugin
   default-language: Haskell2010
 
 executable impe-exe
@@ -54,7 +56,7 @@ executable impe-exe
       Paths_impe
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
     , containers
@@ -63,6 +65,8 @@ executable impe-exe
     , mtl
     , optparse-simple
     , parsec
+    , polysemy
+    , polysemy-plugin
   default-language: Haskell2010
 
 test-suite impe-test
@@ -72,7 +76,7 @@ test-suite impe-test
       Paths_impe
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
     , containers
@@ -81,4 +85,6 @@ test-suite impe-test
     , mtl
     , optparse-simple
     , parsec
+    , polysemy
+    , polysemy-plugin
   default-language: Haskell2010
