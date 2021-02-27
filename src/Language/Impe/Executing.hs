@@ -3,6 +3,7 @@ module Language.Impe.Executing where
 import Control.Applicative
 import Control.Lens
 import Control.Monad
+import Data.List (intercalate)
 import Data.Map as Map hiding (foldr, map)
 import Language.Impe.Grammar
 import Language.Impe.Primitive
@@ -164,7 +165,7 @@ impossible msg = execution_error $ printf "[impossible] %s" msg
 
 type_prohibited_primitive :: Name -> [Expression] -> Execution a
 type_prohibited_primitive f es =
-  type_prohibited $ printf "the (perhaps unrecognized) primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s" (show f) (show es)
+  type_prohibited $ printf "the (perhaps unrecognized) primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s(%s)" (show f) (show f) (intercalate "," $ show <$> es)
 
 {-
 ## Processing
