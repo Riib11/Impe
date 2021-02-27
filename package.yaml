@@ -28,7 +28,9 @@ dependencies:
   - lens
   - containers
   - parsec
-  - optparse-simple
+  # - optparse-simple
+  - optparse-applicative
+  - gitrev
 
 library:
   source-dirs: src

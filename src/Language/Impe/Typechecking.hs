@@ -39,7 +39,7 @@ makeLenses ''TypecheckingContext
 instance Show TypecheckingContext where
   show ctx =
     unlines
-      [ "typing context:",
+      [ "typechecking context:",
         "  variables:",
         unlines . map (\(x, t) -> printf "    %s: %s" (show x) (show t)) . toList $ ctx ^. variables,
         "  functions:",

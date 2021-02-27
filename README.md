@@ -20,7 +20,7 @@ This project demonstrates the following tools:
 - [parsec](https://hackage.haskell.org/package/parsec)
 - [mtl](https://hackage.haskell.org/package/mtl)
 - [lens](https://hackage.haskell.org/package/lens)
-- [optparse-simple](https://hackage.haskell.org/package/optparse-simple)
+- [optparse-applicative](https://hackage.haskell.org/package/optparse-applicative)
 
 ## Features
 

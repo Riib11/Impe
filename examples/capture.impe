@@ -5,14 +5,13 @@ f(): void = {
   x: int;
   x <- 0;
   
-  inc(): void = x <- +(x, 1);
+  inc(): void =
+    x <- +(x, 1);
 
   inc();
   output_int(x);
 }
 
-main(): void = {
-  f();
-  f();
-  f();
-}
+f();
+f();
+f();

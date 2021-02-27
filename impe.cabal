@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fceadb0c8d20f361b9520703250099bf08cc2d88a89ac6f651bf8cc6f3fb4e61
+-- hash: a1f8f04c882728ec1ab1093bf7dfb7325a6d84e976c5983c2a3f265372df98b9
 
 name:           impe
 version:        0.1.0.0
@@ -42,9 +42,10 @@ library
   build-depends:
       base >=4.7 && <5
     , containers
+    , gitrev
     , lens
     , mtl
-    , optparse-simple
+    , optparse-applicative
     , parsec
     , polysemy
     , polysemy-plugin
@@ -53,6 +54,7 @@ library
 executable impe-exe
   main-is: Main.hs
   other-modules:
+      MainOptions
       Paths_impe
   hs-source-dirs:
       app
@@ -60,10 +62,11 @@ executable impe-exe
   build-depends:
       base >=4.7 && <5
     , containers
+    , gitrev
     , impe
     , lens
     , mtl
-    , optparse-simple
+    , optparse-applicative
     , parsec
     , polysemy
     , polysemy-plugin
@@ -80,10 +83,11 @@ test-suite impe-test
   build-depends:
       base >=4.7 && <5
     , containers
+    , gitrev
     , impe
     , lens
     , mtl
-    , optparse-simple
+    , optparse-applicative
     , parsec
     , polysemy
     , polysemy-plugin

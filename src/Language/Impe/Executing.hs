@@ -77,7 +77,8 @@ instance Show ExecutionContext where
           . map
             ( \((f, i), mb_clo) -> case mb_clo of
                 -- TODO: can't print closure since is recursively nested?
-                Just _ -> printf "    %s#%s = ..." (show f) (show i)
+                -- Just clo -> printf "    %s#%s = %s" (show f) (show i) (show clo)
+                Just _ -> printf "    %s#%s = ..." (show f) (show i) -- (show clo)
                 Nothing -> printf "    %s#%s undefined" (show f) (show i)
             )
           . toList
@@ -264,10 +265,10 @@ executePrimitiveFunctionBody f xs = do
       return . Just $ Int (x - y)
     (Name "*", [Int x, Int y]) ->
       return . Just $ Int (x * y)
-    (Name "outputs_bool", [Bool v]) -> do
+    (Name "output_bool", [Bool v]) -> do
       writeOutput (show v)
       return . Just $ Unit
-    (Name "outputs_int", [Int v]) -> do
+    (Name "output_int", [Int v]) -> do
       writeOutput (show v)
       return . Just $ Unit
     _ -> type_prohibited_primitive f args
