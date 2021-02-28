@@ -84,15 +84,15 @@ instance Show ExecutionContext where
           . toList
           $ ctx ^. functions,
         "  inputs:",
-        "    " ++ show (ctx ^. inputs),
+        "    " ++ intercalate "\n    " (ctx ^. inputs),
         "  outputs:",
-        "    " ++ show (ctx ^. outputs)
+        "    " ++ intercalate "\n    " (ctx ^. outputs)
       ]
 
 instance Show Scope where
   show scp =
     unlines
-      [ "    [" ++ show scp ++ "]:",
+      [ "    {" ++ show scp ++ "}:",
         "      variables:",
         unlines . map (\(x, (_, i)) -> printf "        %s#%s" (show x) (show i)) . toList $ scp ^. variableUIDs,
         "      functions:",
@@ -108,26 +108,14 @@ instance Show ExecutionError where
 -}
 
 runExecution ::
+  ExecutionContext ->
   Execution a ->
-  ( [ExecutionLog],
-    Either ExecutionError (ExecutionContext, a)
-  )
-runExecution =
+  ([ExecutionLog], Either ExecutionError (ExecutionContext, a))
+runExecution ctx =
   run
     . runOutputList
     . runError
-    . runState emptyExecutionContext
-
-execExecution ::
-  Execution a ->
-  ( [ExecutionLog],
-    Either ExecutionError ExecutionContext
-  )
-execExecution =
-  run
-    . runOutputList
-    . runError
-    . execState emptyExecutionContext
+    . runState ctx
 
 emptyExecutionContext :: ExecutionContext
 emptyExecutionContext =
@@ -267,10 +255,10 @@ executePrimitiveFunctionBody f xs = do
       return . Just $ Int (x * y)
     (Name "output_bool", [Bool v]) -> do
       writeOutput (show v)
-      return . Just $ Unit
+      return Nothing
     (Name "output_int", [Int v]) -> do
       writeOutput (show v)
-      return . Just $ Unit
+      return Nothing
     _ -> type_prohibited_primitive f args
 
 {-

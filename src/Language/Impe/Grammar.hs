@@ -87,7 +87,7 @@ instance Show Type where
 instance Show Expression where
   show = \case
     Unit -> "unit"
-    Bool b -> show b
+    Bool b -> if b then "true" else "false"
     Int i -> show i
     Reference x -> show x
     Application f args -> printf "%s(%s)" (show f) (intercalate ", " . (show <$>) $ args)

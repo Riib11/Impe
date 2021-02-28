@@ -21,15 +21,15 @@ program = do
 instruction :: Parser Instruction
 instruction = do
   inst <-
-    choice
-      [ try block,
-        try return_,
-        try function,
-        try conditional,
-        try loop,
-        try declaration,
-        try assignment,
-        try procedureCall
+    choice . map try $
+      [ block,
+        return_,
+        function,
+        conditional,
+        loop,
+        declaration,
+        assignment,
+        procedureCall
       ]
   return inst
 
@@ -113,12 +113,12 @@ procedureCall = do
 
 type_ :: Parser Type
 type_ =
-  choice
-    [ try voidType,
-      try unitType,
-      try intType,
-      try boolType,
-      try functionType
+  choice . map try $
+    [ voidType,
+      unitType,
+      intType,
+      boolType,
+      functionType
     ]
 
 -- void
@@ -159,13 +159,13 @@ functionType = do
 
 expression :: Parser Expression
 expression =
-  choice
-    [ try unit,
-      try bool,
-      try int,
-      try application,
-      try reference,
-      try $ parens expression
+  choice . map try $
+    [ unit,
+      bool,
+      int,
+      application,
+      reference,
+      parens expression
     ]
 
 -- unit
@@ -214,3 +214,46 @@ application = do
 -- x
 name :: Parser Name
 name = Name <$> identifier
+
+{-
+## REPL
+-}
+
+data InputREPL
+  = InstructionREPL Instruction
+  | ExpressionREPL Expression
+  | CommandREPL CommandREPL
+  deriving (Show)
+
+data CommandREPL
+  = CommandREPL_Quit
+  | CommandREPL_GetContext
+  | CommandREPL_GetType Instruction
+  deriving (Show)
+
+inputREPL :: Parser InputREPL
+inputREPL = do
+  inpt <-
+    choice . map try $
+      [ CommandREPL <$> commandREPL,
+        InstructionREPL <$> instruction,
+        ExpressionREPL <$> expression
+      ]
+  eof
+  return inpt
+
+commandREPL :: Parser CommandREPL
+commandREPL = do
+  char ':'
+  choice . map try $
+    [ do
+        choice . map symbol $ ["q", "quit"]
+        return CommandREPL_Quit,
+      do
+        choice . map symbol $ ["ctx", "context"]
+        return CommandREPL_GetContext,
+      do
+        choice . map symbol $ ["t", "type"]
+        inst <- instruction <|> (Return <$> expression)
+        return $ CommandREPL_GetType inst
+    ]

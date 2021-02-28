@@ -79,8 +79,5 @@ parseProgramOptions = MainOptions <$> parseMode <*> parseVerbosity <*> parseInpu
       pure $ mapMaybe (\(c, phase) -> if c `elem` vrb then Just phase else Nothing) phase_symbols
     parseInputFilename :: Parser (Maybe String)
     parseInputFilename =
-      ( \fn -> case fn of
-          "" -> Nothing
-          fn -> Just fn
-      )
-        <$> strArgument (metavar "INPUT" <> help "input filename")
+      (Just <$> strArgument (metavar "INPUT" <> help "input filename"))
+        <|> pure Nothing

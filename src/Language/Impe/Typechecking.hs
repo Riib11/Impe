@@ -2,6 +2,7 @@ module Language.Impe.Typechecking where
 
 import Control.Lens
 import Control.Monad
+import Data.List (intercalate)
 import Data.Map as Map hiding (map)
 import Language.Impe.Grammar as Grammar
 import Language.Impe.Primitive
@@ -51,26 +52,16 @@ instance Show TypecheckingContext where
 -}
 
 runTypecheck ::
+  TypecheckingContext ->
   Typecheck a ->
   ( [TypecheckingLog],
     Either TypecheckingError (TypecheckingContext, a)
   )
-runTypecheck =
+runTypecheck ctx =
   run
     . runOutputList
     . runError
-    . runState emptyTypecheckingContext
-
-execTypecheck ::
-  Typecheck a ->
-  ( [TypecheckingLog],
-    Either TypecheckingError TypecheckingContext
-  )
-execTypecheck =
-  run
-    . runOutputList
-    . runError
-    . execState emptyTypecheckingContext
+    . runState ctx
 
 emptyTypecheckingContext :: TypecheckingContext
 emptyTypecheckingContext =
@@ -176,7 +167,7 @@ synthesizeInstructionStep = \case
     getTyping functions f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
-          type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
+          type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\nto mismatching number of arguments\n\n  %s(%s)\n\n" (show f) (show $ FunctionType ss t) (show f) (intercalate ", " . map show $ es)
         mapM_ (uncurry checkExpression) (zip es ss)
         return t
       fType -> type_error $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s\n\n" (show f) (show fType) (show es)
@@ -198,10 +189,10 @@ synthesizeExpression = \case
     getTyping functions f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
-          type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\n to mismatching number of arguments\n\n  %s\n\n" (show f) (show $ FunctionType ss t) (show es)
+          type_error $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\nto mismatching number of arguments\n\n  %s(%s)\n\n" (show f) (show $ FunctionType ss t) (show f) (intercalate ", " . map show $ es)
         mapM_ (uncurry checkExpression) (zip es ss)
         return t
-      fType -> type_error $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s\n\n" (show f) (show fType) (show es)
+      fType -> type_error $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s(%s)\n\n" (show f) (show fType) (show f) (intercalate ", " . map show $ es)
 
 {-
 ## Unification

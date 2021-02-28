@@ -21,7 +21,7 @@ language =
       Token.identLetter = alphaNum <|> oneOf specials,
       Token.opStart = choice [], -- oneOf "+-*/&|",
       Token.opLetter = choice [], -- oneOf "+-*/&|",
-      Token.reservedNames = [],
+      Token.reservedNames = ["return"],
       Token.reservedOpNames = [], -- ["+", "-", "*", "/", "&", "|"],
       Token.caseSensitive = True
     }
