@@ -103,10 +103,10 @@ mainTypecheckProgram prog = do
   case runTypecheck emptyTypecheckingContext (processProgram prog) of
     (logs, Left err) ->
       throw . unlines $
-        ["[typecheck error]", "", "typechecking logs:", intercalate "\n  " logs, "", "typechecking error:", err]
+        ["[typecheck error]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", "typechecking error:", err]
     (logs, Right (tcctx, ())) -> do
       mainDisplay Phase_Typechecking . unlines $
-        ["[typecheck success]", "", "typechecking logs:", intercalate "\n  " logs, "", "typechecking context:", show tcctx, ""]
+        ["[typecheck success]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", show tcctx, ""]
       return tcctx
 
 mainExecuteProgram :: Program -> Main ExecutionContext
@@ -115,10 +115,10 @@ mainExecuteProgram prog = do
   case runExecution emptyExecutionContext (executeProgram prog) of
     (logs, Left err) ->
       throw . unlines $
-        ["[execution error]", "", "execution logs:", intercalate "\n  " logs, "", "execution error:", show err]
+        ["[execution error]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", "execution error:", show err]
     (logs, Right (exctx, ())) -> do
       mainDisplay Phase_Executing . unlines $
-        ["[execution success]", "", "execution logs:", intercalate "\n  " logs, "", "execution context:", show exctx]
+        ["[execution success]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", show exctx]
       return exctx
 
 {-
@@ -207,10 +207,10 @@ replTypecheckInstruction ctx inst = do
   case runTypecheck (ctx ^. _1) (synthesizeInstruction inst) of
     (logs, Left err) ->
       throw . unlines $
-        ["[typecheck error]", "", "typechecking logs:", intercalate "\n  " logs, "", "typechecking error: " ++ err]
+        ["[typecheck error]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", "typechecking error: " ++ err]
     (logs, Right (tcctx, t)) -> do
       replDisplay Phase_Typechecking . unlines $
-        ["[typecheck success]", "", "typechecking logs:", intercalate "\n  " logs, "", "typechecking context:", show tcctx, ""]
+        ["[typecheck success]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", show tcctx, ""]
       return (tcctx, t)
 
 replExecuteInstruction :: InterpretationContext -> Instruction -> REPL (ExecutionContext, Maybe Value)
@@ -219,10 +219,10 @@ replExecuteInstruction ctx inst = do
   case runExecution (ctx ^. _2) (executeInstruction inst) of
     (logs, Left err) ->
       throw . unlines $
-        ["[execution error]", "", "execution logs:", intercalate "\n  " logs, "", "execution error:", show err]
+        ["[execution error]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", "execution error:", show err]
     (logs, Right (exctx, mb_v)) -> do
       replDisplay Phase_Executing . unlines $
-        ["[execution success]", "", "execution logs:", intercalate "\n  " logs, "", "execution context:", show exctx]
+        ["[execution success]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", show exctx]
       return (exctx, mb_v)
 
 {-

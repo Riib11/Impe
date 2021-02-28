@@ -5,6 +5,7 @@ import Control.Lens
 import Control.Monad
 import Data.List (intercalate)
 import Data.Map as Map hiding (foldr, map)
+import Data.Maybe
 import Language.Impe.Grammar
 import Language.Impe.Primitive
 import Polysemy
@@ -300,7 +301,26 @@ enterScopes scps c = do
   modify $ scopes %~ (scps ++) -- enter new scopes
   a <- c
   modify $ scopes .~ scpsOriginal -- reset to original scopes
+  garbagecollect scps -- garbage collect
   return a
+
+garbagecollect :: [Scope] -> Execution ()
+garbagecollect scps = mapM_ garbagecollectScope scps
+  where
+    garbagecollectScope :: Scope -> Execution ()
+    garbagecollectScope scp = do
+      mapM_
+        ( \(_, uid) -> do
+            mb_v <- gets (^. variables . at uid)
+            unless (isJust mb_v) (deleteVariable uid)
+        )
+        (toList $ scp ^. variableUIDs)
+      mapM_
+        ( \(_, uid) -> do
+            mb_f <- gets (^. functions . at uid)
+            unless (isJust mb_f) (deleteFunction uid)
+        )
+        (toList $ scp ^. functionUIDs)
 
 -- UID
 
@@ -391,6 +411,14 @@ getFunction' f =
         Just (Just clo) -> return $ Just clo
         _ -> return Nothing
     Nothing -> return Nothing
+
+-- delete
+
+deleteVariable :: UID -> Execution ()
+deleteVariable uid = modify $ variables . at uid .~ Nothing
+
+deleteFunction :: UID -> Execution ()
+deleteFunction uid = modify $ functions . at uid .~ Nothing
 
 -- I/O
 
