@@ -78,8 +78,8 @@ instance Show ExecutionContext where
           . map
             ( \((f, i), mb_clo) -> case mb_clo of
                 -- TODO: can't print closure since is recursively nested?
-                -- Just clo -> printf "    %s#%s = %s" (show f) (show i) (show clo)
-                Just _ -> printf "    %s#%s = ..." (show f) (show i) -- (show clo)
+                -- Just () -> printf "    %s#%s = %s" (show f) (show i) (show clo)
+                Just (xs, _, inst) -> printf "    %s#%s = (%s) -> %s" (show f) (show i) (intercalate ", " . map show $ xs) (show inst)
                 Nothing -> printf "    %s#%s undefined" (show f) (show i)
             )
           . toList
@@ -305,7 +305,9 @@ enterScopes scps c = do
   return a
 
 garbagecollect :: [Scope] -> Execution ()
-garbagecollect scps = mapM_ garbagecollectScope scps
+garbagecollect scps = do
+  output "garbagecollecting"
+  mapM_ garbagecollectScope scps
   where
     garbagecollectScope :: Scope -> Execution ()
     garbagecollectScope scp = do

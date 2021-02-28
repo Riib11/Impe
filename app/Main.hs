@@ -11,10 +11,10 @@ import Control.Monad
 import Data.List (intercalate)
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
-import Language.Impe.Executing
-import Language.Impe.Grammar
-import Language.Impe.Parsing
-import Language.Impe.Typechecking
+import Language.Impe.Executing as Executing
+import Language.Impe.Grammar as Grammar
+import Language.Impe.Parsing as Parsing
+import Language.Impe.Typechecking as Typechecking
 import MainOptions
 import Options.Applicative
 import Paths_impe (version)
@@ -150,7 +150,7 @@ replLoop ctx = do
   case mb_v_t of
     Just (v, t) -> embed . putStrLn $ printf "%s: %s" (show v) (show t)
     Nothing -> return ()
-  -- reset outputs
+  -- reset outputs and logs
   let ctx'' = ctx' & _2 . outputs .~ []
   -- recurse
   replLoop ctx''

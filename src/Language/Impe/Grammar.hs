@@ -48,12 +48,12 @@ mainName = Name "main"
 
 instance Show Program where
   show = \case
-    Program insts -> intercalate " " . (show <$>) $ insts
+    Program insts -> intercalate " " . map show $ insts
 
 instance Show Instruction where
   show = \case
     Block insts ->
-      intercalate " " . (show <$>) $ insts
+      "{ " ++ (intercalate " " . map show $ insts) ++ " }"
     Declaration x t ->
       printf "%s: %s;" (show x) (show t)
     Assignment x e ->
@@ -72,9 +72,9 @@ instance Show Instruction where
     Return e ->
       printf "return %s;" (show e)
     ProcedureCall f args ->
-      printf "%s(%s);" (show f) (intercalate ", " . (show <$>) $ args)
+      printf "%s(%s);" (show f) (intercalate ", " . map show $ args)
     PrimitiveFunctionBody f args ->
-      printf "{{%s(%s)}}" (show f) (intercalate ", " . (show <$>) $ args)
+      printf "[primitive(%s)(%s)]" (show f) (intercalate ", " . map show $ args)
 
 instance Show Type where
   show = \case
@@ -82,7 +82,7 @@ instance Show Type where
     UnitType -> "unit"
     IntType -> "int"
     BoolType -> "bool"
-    FunctionType ss t -> printf "(%s) -> %s" (intercalate ", " . (show <$>) $ ss) (show t)
+    FunctionType ss t -> printf "(%s) -> %s" (intercalate ", " . map show $ ss) (show t)
 
 instance Show Expression where
   show = \case
@@ -90,7 +90,7 @@ instance Show Expression where
     Bool b -> if b then "true" else "false"
     Int i -> show i
     Reference x -> show x
-    Application f args -> printf "%s(%s)" (show f) (intercalate ", " . (show <$>) $ args)
+    Application f args -> printf "%s(%s)" (show f) (intercalate ", " . map show $ args)
 
 instance Show Name where
   show (Name x) = x

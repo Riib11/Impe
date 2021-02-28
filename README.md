@@ -40,8 +40,13 @@ This project demonstrates the following tools:
 
 ## To Do
 
+- error on duplicate names in same scope (requires using nested scoping in
+  typechecking, so probably would be a good idea to just make a general data
+  structure to use for both).
+
+## Experimental
+
 - pointers (perhaps define whole new language for this)
 - better type and execution errors e.g. line numbers and better messages (redue
   the amount of abstraction for errors and stuff i.e. give message in place for
   each error)
-- rename "Typing" to "Typechecking
