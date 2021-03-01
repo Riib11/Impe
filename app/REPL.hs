@@ -1,0 +1,105 @@
+module REPL where
+
+-- {-
+-- ## Interactive REPL
+-- -}
+
+-- type REPL a = Sem '[Error String, Reader MainOptions, Error (), Embed IO] a
+
+-- repl :: MainOptions -> InterpretationContext -> IO ()
+-- repl opts ctx = do
+--   putStrLn "[impe: interactive]"
+--   void . runM . runError . runReader opts $ replLoop ctx
+
+-- replLoop :: InterpretationContext -> Sem '[Reader MainOptions, Error (), Embed IO] a
+-- replLoop ctx = do
+--   -- execute
+--   (ctx', mb_v_t) <-
+--     runError (replLoopBody ctx) >>= \case
+--       Left err -> do
+--         embed . putStrLn $ err
+--         return (ctx, Nothing)
+--       Right (ctx', mb_v_t) ->
+--         return (ctx', mb_v_t)
+--   -- output
+--   case ctx' ^. _2 . outputs of
+--     [] -> return ()
+--     outs -> embed . putStr . unlines $ outs
+--   -- value and type
+--   case mb_v_t of
+--     Just (v, t) -> embed . putStrLn $ printf "%s: %s" (show v) (show t)
+--     Nothing -> return ()
+--   -- reset outputs and logs
+--   let ctx'' = ctx' & _2 . outputs .~ []
+--   -- recurse
+--   replLoop ctx''
+
+-- replLoopBody :: InterpretationContext -> REPL (InterpretationContext, Maybe (Value, Type))
+-- replLoopBody ctx = do
+--   src <- replReadInput
+--   replParseInput src >>= \case
+--     InstructionREPL inst -> do
+--       (tcCtx, t) <- replTypecheckInstruction ctx inst
+--       (exCtx', mb_v) <- replExecuteInstruction ctx inst
+--       return ((tcCtx, exCtx'), (,t) <$> mb_v)
+--     ExpressionREPL e -> do
+--       -- TODO: does this actually work right???
+--       let inst = Return e
+--       (tcCtx, t) <- replTypecheckInstruction ctx inst
+--       (exCtx', mb_v) <- replExecuteInstruction ctx inst
+--       return ((tcCtx, exCtx'), (,t) <$> mb_v)
+--     CommandREPL cmd ->
+--       case cmd of
+--         CommandREPL_Quit -> throw () -- escape REPL
+--         CommandREPL_GetContext -> do
+--           embed
+--             do
+--               putStrLn . show $ ctx ^. _1
+--               putStrLn . show $ ctx ^. _2
+--           return (ctx, Nothing)
+--         CommandREPL_GetType inst -> do
+--           (tcCtx, t) <- replTypecheckInstruction ctx inst
+--           embed . putStrLn . show $ t
+--           return (ctx, Nothing)
+
+-- replReadInput :: REPL String
+-- replReadInput = embed do
+--   putStr "> "
+--   hFlush stdout
+--   getLine
+
+-- replParseInput :: String -> REPL InputREPL
+-- replParseInput src = do
+--   replDisplay Phase_Parsing "[parsing]"
+--   case runParser inputREPL () "stdin" src of
+--     Left err ->
+--       throw . unlines $
+--         ["[parsing error]", "", show err, ""]
+--     Right inpt -> do
+--       replDisplay Phase_Parsing . unlines $
+--         ["[parsing success]", "", "input:", show inpt, ""]
+--       return inpt
+
+-- replTypecheckInstruction :: InterpretationContext -> Instruction -> REPL (TypecheckingContext, Type)
+-- replTypecheckInstruction ctx inst = do
+--   replDisplay Phase_Typechecking "[typechecking]"
+--   case runTypecheck (ctx ^. _1) (synthesizeInstruction inst) of
+--     (logs, Left err) ->
+--       throw . unlines $
+--         ["[typecheck error]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", "typechecking error: " ++ err]
+--     (logs, Right (tcCtx, t)) -> do
+--       replDisplay Phase_Typechecking . unlines $
+--         ["[typecheck success]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", show tcCtx, ""]
+--       return (tcCtx, t)
+
+-- replExecuteInstruction :: InterpretationContext -> Instruction -> REPL (ExecutionContext, Maybe Value)
+-- replExecuteInstruction ctx inst = do
+--   replDisplay Phase_Executing "[executing]"
+--   case runExecution (ctx ^. _2) (executeInstruction inst) of
+--     (logs, Left err) ->
+--       throw . unlines $
+--         ["[execution error]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", "execution error:", show err]
+--     (logs, Right (exCtx, mb_v)) -> do
+--       replDisplay Phase_Executing . unlines $
+--         ["[execution success]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", show exCtx]
+--       return (exCtx, mb_v)

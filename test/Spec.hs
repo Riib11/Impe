@@ -1,46 +1,53 @@
-import Language.Impe.Executing
-import Language.Impe.Grammar
-import Language.Impe.Parsing
-import Language.Impe.Typing
-import Text.ParserCombinators.Parsec
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+
+import Control.Lens
+import Control.Monad
+import Data.List (intercalate)
+import Data.Version (showVersion)
+import Development.GitRev (gitHash)
+import Language.Impe.Executing as Executing
+import Language.Impe.Grammar as Grammar
+import Language.Impe.Parsing as Parsing
+import Language.Impe.Typechecking as Typechecking
+import Options.Applicative
+import Paths_impe (version)
+import Polysemy
+import Polysemy.Error as Error
+import Polysemy.Output as Output
+import Polysemy.Reader as Reader
+import Polysemy.State as State
+import System.IO as IO
+import Text.ParserCombinators.Parsec (runParser)
+import Text.Printf
 
 main :: IO ()
-main = mapM_ parse example_filenames
-  where
-    parse filename = do
-      source <- readFile filename
-      print $ runParser program () filename source
-    example_filenames =
-      ("examples/" ++)
-        <$> [ "test.imp"
-            ]
+main = do
+  let fn = "examples/test.impe"
+  interpretFile fn
 
--- main :: IO ()
--- main = do
--- case runTyping (synthesizeInstruction inst) of
---   Left err -> display "typing: error" err
---   Right (t, ctx) -> do
---     display "typing: success" (show t)
---     case runExecuting (executeInstruction inst) of
---       Left err -> display "executing: error" err
---       Right (e, ctx) -> display "executing: success" (show e)
--- where
---   inst =
---     Block
---       [ Declaration (Name "x") BoolType,
---         Assignment (Name "x") (Bool True),
---         Block
---           [ Declaration (Name "x") IntType,
---             Assignment (Name "x") (Int 10)
---           ],
---         Return (Reference $ Name "x")
---       ]
-
--- display :: String -> String -> IO ()
--- display tag msg = do
---   putStrLn . unlines $
---     [ "[" ++ tag ++ "]",
---       "",
---       msg,
---       ""
---     ]
+interpretFile :: String -> IO ()
+interpretFile fn = do
+  src <- readFile fn
+  --
+  putStrLn "[parsing]"
+  prgm <- case runParser Parsing.program () fn src of
+    Left prsErr -> error $ show prsErr
+    Right prgm -> return prgm
+  print prgm
+  --
+  putStrLn "[typechecking]"
+  tcCtx <- case run . runOutputList . runError . execState Typechecking.emptyContext $ typecheckProgram prgm of
+    (logs, Left tcErr) -> error tcErr
+    (logs, Right tcCtx) -> return tcCtx
+  print tcCtx
+  --
+  putStrLn "[executing]"
+  exCtx <- case run . runOutputList . runError . execState Executing.emptyContext $ executeProgram prgm of
+    (logs, Left exErr) -> error exErr
+    (logs, Right exCtx) -> return exCtx
+  print exCtx
+  return ()

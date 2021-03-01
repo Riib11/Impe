@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a1f8f04c882728ec1ab1093bf7dfb7325a6d84e976c5983c2a3f265372df98b9
+-- hash: f8cd6f2d80680e0d7181c74d4ceea191eddebefc2db0b33c9ac906961953a25f
 
 name:           impe
 version:        0.1.0.0
@@ -27,8 +27,10 @@ source-repository head
 
 library
   exposed-modules:
+      Data.Namespace
       Language.Impe.Executing
       Language.Impe.Grammar
+      Language.Impe.Interpreting
       Language.Impe.Lexing
       Language.Impe.Parsing
       Language.Impe.Primitive
@@ -37,7 +39,7 @@ library
       Paths_impe
   hs-source-dirs:
       src
-  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies
   ghc-options: -Wall -Wno-missing-signatures -Wno-unused-do-bind -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
@@ -55,6 +57,10 @@ executable impe-exe
   main-is: Main.hs
   other-modules:
       MainOptions
+      REPL
+      REPL.Executing
+      REPL.Parsing
+      REPL.Typechecking
       Paths_impe
   hs-source-dirs:
       app

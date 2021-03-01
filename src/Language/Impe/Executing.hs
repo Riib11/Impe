@@ -1,11 +1,12 @@
 module Language.Impe.Executing where
 
 import Control.Applicative
-import Control.Lens
+import Control.Lens hiding (Context)
 import Control.Monad
-import Data.List (intercalate)
-import Data.Map as Map hiding (foldr, map)
-import Data.Maybe
+import qualified Data.List as List
+import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.Map as Map
+import Data.Namespace as Namespace
 import Language.Impe.Grammar
 import Language.Impe.Primitive
 import Polysemy
@@ -24,138 +25,70 @@ TODO: description
 ## Executing Computation
 -}
 
-data ExecutionContext = ExecutionContext
-  { _scopes :: [Scope],
-    _variables :: Map UID (Maybe Value),
-    _functions :: Map UID (Maybe Closure),
-    _indexUID :: IndexUID,
+data Context = Context
+  { _namespace :: Namespace Name (Either (Maybe Value) (Maybe Closure)),
     _inputs :: [String],
     _outputs :: [String]
   }
 
-data Scope = Scope
-  { _variableUIDs :: Map Name UID,
-    _functionUIDs :: Map Name UID
-  }
-
-type UID = (Name, IndexUID)
-
-type IndexUID = Int
-
-type Closure = ([Name], [Scope], Instruction)
-
 type Value = Expression
 
-data ExecutionError = ExecutionError String ExecutionContext
+type Binding = ([Name], Instruction)
 
-type ExecutionLog = String
+type Closure = (Binding, Scope Name)
 
-type Execution a = Sem '[State ExecutionContext, Error ExecutionError, Output ExecutionLog] a
+type Execution a =
+  Sem
+    '[ State Context,
+       Error String,
+       Output String
+     ]
+    a
 
-makeLenses ''Scope
-makeLenses ''ExecutionContext
+makeLenses ''Context
 
 -- instances
 
-instance Show ExecutionContext where
+instance Show Context where
   show ctx =
     unlines
       [ "execution context:",
-        -- TODO: can't print scopes since are recursively nested?
-        -- "  scopes:",
-        -- unlines $ show <$> (zip (reverse $ ctx ^. scopes) [(0 :: Int) ..]),
-        "  variables UIDs:",
+        "  namespace:",
+        "    scope:",
+        printf "      %s" (show $ ctx ^. namespace . scope . to NonEmpty.toList),
+        "    store:",
         unlines
           . map
-            ( \((x, i), mb_v) -> case mb_v of
-                Just v -> printf "    %s#%s = %s" (show x) (show i) (show v)
-                Nothing -> printf "    %s#%s undefined" (show x) (show i)
+            ( \((x, i), e) -> case e of
+                Left mb_val -> case mb_val of
+                  Just val ->
+                    printf "      var %s#%s = %s" (show x) (show i) (show val)
+                  Nothing ->
+                    printf "      var %s undefined" (show x)
+                Right mb_clo -> case mb_clo of
+                  Just ((xs, inst), _) ->
+                    printf "      fun %s(%s) = %s" (show x) (List.intercalate ", " . map show $ xs) (show inst)
+                  Nothing ->
+                    printf "      fun %s undefined" (show x)
             )
-          . toList
-          $ ctx ^. variables,
-        "  functions UIDs:",
-        unlines
-          . map
-            ( \((f, i), mb_clo) -> case mb_clo of
-                -- TODO: can't print closure since is recursively nested?
-                -- Just () -> printf "    %s#%s = %s" (show f) (show i) (show clo)
-                Just (xs, _, inst) -> printf "    %s#%s = (%s) -> %s" (show f) (show i) (intercalate ", " . map show $ xs) (show inst)
-                Nothing -> printf "    %s#%s undefined" (show f) (show i)
-            )
-          . toList
-          $ ctx ^. functions,
-        "  inputs:",
-        "    " ++ intercalate "\n    " (ctx ^. inputs),
-        "  outputs:",
-        "    " ++ intercalate "\n    " (ctx ^. outputs)
+          $ ctx ^. namespace . store . to Map.toList,
+        "    inputs:",
+        "      " ++ List.intercalate ("\n      ") (ctx ^. inputs),
+        "    outputs:",
+        "      " ++ List.intercalate ("\n      ") (ctx ^. outputs)
       ]
-
-instance Show Scope where
-  show scp =
-    unlines
-      [ "    {" ++ show scp ++ "}:",
-        "      variables:",
-        unlines . map (\(x, (_, i)) -> printf "        %s#%s" (show x) (show i)) . toList $ scp ^. variableUIDs,
-        "      functions:",
-        unlines . map (\(f, (_, i)) -> printf "        %s#%s" (show f) (show i)) . toList $ scp ^. functionUIDs
-      ]
-
-instance Show ExecutionError where
-  show = \case
-    ExecutionError msg ctx -> printf "%s\n\n%s" msg (show ctx)
 
 {-
 ### Interface
 -}
 
-runExecution ::
-  ExecutionContext ->
-  Execution a ->
-  ([ExecutionLog], Either ExecutionError (ExecutionContext, a))
-runExecution ctx =
-  run
-    . runOutputList
-    . runError
-    . runState ctx
-
-emptyExecutionContext :: ExecutionContext
-emptyExecutionContext =
-  ExecutionContext
-    { _scopes = [emptyScope],
-      _indexUID = indexUID_init,
-      _variables = Map.empty,
-      _functions = Map.empty,
-      _inputs = [],
-      _outputs = []
+emptyContext :: Context
+emptyContext =
+  Context
+    { _namespace = mempty,
+      _inputs = mempty,
+      _outputs = mempty
     }
-
-emptyScope :: Scope
-emptyScope =
-  Scope
-    { _functionUIDs = Map.empty,
-      _variableUIDs = Map.empty
-    }
-
-indexUID_init :: IndexUID
-indexUID_init = 0
-
-indexUID_next :: IndexUID -> IndexUID
-indexUID_next = (1 +)
-
-execution_error :: String -> Execution a
-execution_error msg = do
-  ctx <- State.get
-  throw $ ExecutionError msg ctx
-
-type_prohibited :: String -> Execution a
-type_prohibited msg = execution_error $ printf "[type-prohibited] %s" msg
-
-impossible :: String -> Execution a
-impossible msg = execution_error $ printf "[impossible] %s" msg
-
-type_prohibited_primitive :: Name -> [Expression] -> Execution a
-type_prohibited_primitive f es =
-  type_prohibited $ printf "the (perhaps unrecognized) primitive function `%s` was not passed the correct number and types of arguments:\n\n  %s(%s)" (show f) (show f) (intercalate "," $ show <$> es)
 
 {-
 ## Processing
@@ -174,26 +107,28 @@ executePrelude = do
     ( \(x, _) ->
         do
           declareVariable x
-          setVariable x undefined -- TODO
+          updateVariable x undefined -- TODO
     )
     primitive_variables
   mapM_
     ( \(f, params, _) -> do
         declareFunction f
-        setFunction f (fst <$> params, PrimitiveFunctionBody f (fst <$> params))
+        updateFunction f (fst <$> params, PrimitiveFunctionBody f (fst <$> params))
     )
     primitive_functions
 
 executeMain :: Execution ()
-executeMain =
-  getFunction' mainName >>= \case
-    Just ([], scps, _) ->
-      enterScopes scps . void $
-        executeInstruction (ProcedureCall mainName [])
-    Just (_, _, _) ->
-      type_prohibited $ "the `main` function must not take any arguments."
+executeMain = do
+  queryFunction' mainName >>= \case
+    Just (Just (([], _), _)) ->
+      void $ executeInstruction (ProcedureCall mainName [])
+    Just (Just ((_, _), _)) ->
+      throw $ "[type prohibited] the main function must take 0 arguments"
+    Just Nothing ->
+      throw $ "the main function was declared but not defined"
     Nothing ->
       return ()
+  return ()
 
 {-
 ## Execution
@@ -201,38 +136,39 @@ executeMain =
 
 executeInstruction :: Instruction -> Execution (Maybe Value)
 executeInstruction = \case
-  Block insts -> newScope do
-    foldM (\result -> ((result <|>) <$>) . executeInstruction) Nothing insts
+  Block insts -> locallyScoped do
+    foldl (<|>) Nothing <$> traverse executeInstruction insts
   Declaration x _ -> do
     declareVariable x
     return Nothing
   Assignment x e -> do
-    setVariable x =<< evaluateExpression e
+    updateVariable x =<< evaluateExpression e
     return Nothing
   Function f params _ inst -> do
     declareFunction f
-    setFunction f (fst <$> params, inst)
+    updateFunction f (fst <$> params, inst)
     return Nothing
   Conditional e inst1 inst2 ->
     evaluateExpression e >>= \case
-      Bool True -> newScope $ executeInstruction inst1
-      Bool False -> newScope $ executeInstruction inst2
-      _ -> type_prohibited $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
+      Bool True -> locallyScoped $ executeInstruction inst1
+      Bool False -> locallyScoped $ executeInstruction inst2
+      _ -> throw $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Loop e inst ->
     evaluateExpression e >>= \case
-      Bool True -> newScope $ executeInstruction $ Loop e inst
+      Bool True -> locallyScoped $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
-      _ -> type_prohibited $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
+      _ -> throw $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e ->
     Just <$> evaluateExpression e
   ProcedureCall f args -> do
-    (xs, scps, inst) <- getFunction f
-    enterScopes scps do
+    ((xs, inst), scp) <- queryFunction f
+
+    withScope scp do
       mapM_
         ( \(x, e) -> do
             v <- evaluateExpression e
             declareVariable x
-            setVariable x v
+            updateVariable x v
         )
         (zip xs args)
       void $ executeInstruction inst
@@ -242,7 +178,7 @@ executeInstruction = \case
 
 executePrimitiveFunctionBody :: Name -> [Name] -> Execution (Maybe Value)
 executePrimitiveFunctionBody f xs = do
-  args <- mapM getVariable xs
+  args <- mapM queryVariable xs
   case (f, args) of
     (Name "&&", [Bool p, Bool q]) ->
       return . Just $ Bool (p && q)
@@ -260,7 +196,7 @@ executePrimitiveFunctionBody f xs = do
     (Name "output_int", [Int v]) -> do
       writeOutput (show v)
       return Nothing
-    _ -> type_prohibited_primitive f args
+    _ -> throw $ printf "the primitive function `%s` was not recognized" (show f)
 
 {-
 ## Evaluation
@@ -270,157 +206,118 @@ evaluateInstruction :: Instruction -> Execution Value
 evaluateInstruction inst =
   executeInstruction inst >>= \case
     Just v -> return v
-    Nothing -> type_prohibited $ printf "expected instruction `%s` to return a value." (show inst)
+    Nothing -> throw $ printf "expected instruction `%s` to return a value." (show inst)
 
 evaluateExpression :: Expression -> Execution Value
 evaluateExpression = \case
-  Reference x -> getVariable x
+  Reference x -> queryVariable x
   Application f es -> do
-    (xs, scps, inst) <- getFunction f
-    enterScopes scps do
+    ((xs, inst), scp) <- queryFunction f
+    withScope scp do
       mapM_
         ( \(x, e) -> do
             v <- evaluateExpression e
             declareVariable x
-            setVariable x v
+            updateVariable x v
         )
         (zip xs es)
       evaluateInstruction inst
   v -> return v
 
 {-
-## Scope
+## Namespace
 -}
 
-newScope :: Execution a -> Execution a
-newScope = enterScopes [emptyScope]
+-- scoping
 
-enterScopes :: [Scope] -> Execution a -> Execution a
-enterScopes scps c = do
-  scpsOriginal <- gets (^. scopes)
-  modify $ scopes %~ (scps ++) -- enter new scopes
-  a <- c
-  modify $ scopes .~ scpsOriginal -- reset to original scopes
-  garbagecollect scps -- garbage collect
+locallyScoped :: Execution a -> Execution a
+locallyScoped exe = do
+  modify $ namespace %~ enterScope -- enter local scope
+  a <- exe
+  modify $ namespace %~ leaveScope -- leave local scope
   return a
 
-garbagecollect :: [Scope] -> Execution ()
-garbagecollect scps = do
-  output "garbagecollecting"
-  mapM_ garbagecollectScope scps
-  where
-    garbagecollectScope :: Scope -> Execution ()
-    garbagecollectScope scp = do
-      mapM_
-        ( \(_, uid) -> do
-            mb_v <- gets (^. variables . at uid)
-            unless (isJust mb_v) (deleteVariable uid)
-        )
-        (toList $ scp ^. variableUIDs)
-      mapM_
-        ( \(_, uid) -> do
-            mb_f <- gets (^. functions . at uid)
-            unless (isJust mb_f) (deleteFunction uid)
-        )
-        (toList $ scp ^. functionUIDs)
-
--- UID
-
-newIndexUID :: Execution IndexUID
-newIndexUID = do
-  i <- gets (^. indexUID)
-  modify $ indexUID %~ indexUID_next
-  return i
-
-newUID :: Name -> Execution UID
-newUID x = do
-  i <- newIndexUID
-  return (x, i)
+withScope :: Scope Name -> Execution a -> Execution a
+withScope scp exe = do
+  scpOri <- gets (^. namespace . scope)
+  modify $ namespace . scope .~ scp -- adopt new scope
+  a <- exe
+  modify $ namespace . scope .~ scpOri -- resert original scope
+  return a
 
 -- declare
 
 declareVariable :: Name -> Execution ()
-declareVariable x = do
-  uid <- newUID x
-  modify $ scopes . ix 0 . variableUIDs . at x .~ Just uid
-  modify $ variables . at uid .~ Just Nothing
+declareVariable x = modify $ namespace . at x .~ Just (Left Nothing)
 
 declareFunction :: Name -> Execution ()
-declareFunction f = do
-  uid <- newUID f
-  modify $ scopes . ix 0 . functionUIDs . at f .~ Just uid
-  modify $ functions . at uid .~ Just Nothing
+declareFunction f = modify $ namespace . at f .~ Just (Right Nothing)
 
--- set
+-- update
 
-setVariable :: Name -> Value -> Execution ()
-setVariable x v = go =<< gets (^. scopes)
-  where
-    go :: [Scope] -> Execution ()
-    go = \case
-      [] -> type_prohibited $ printf "the variable `%s` cannot be set before its declaration." (show x)
-      scp : scps ->
-        case scp ^. variableUIDs . at x of
-          Just uid -> modify $ variables . ix uid .~ Just v
-          Nothing -> go scps
+updateVariable :: Name -> Value -> Execution ()
+updateVariable x val =
+  gets (^. namespace . at x) >>= \case
+    Just (Left _) ->
+      modify $ namespace . at x .~ Just ((Left . Just) val)
+    Just (Right _) ->
+      throw $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+    Nothing ->
+      modify $ namespace . at x .~ Just ((Left . Just) val)
 
-setFunction :: Name -> ([Name], Instruction) -> Execution ()
-setFunction f (xs, inst) = go =<< gets (^. scopes)
-  where
-    go = \case
-      [] -> type_prohibited $ printf "the function `%s` cannot be set before its declaration." (show f)
-      scp : scps ->
-        case scp ^. functionUIDs . at f of
-          Just uid -> do
-            scpsLocal <- gets (^. scopes) -- capture local scopes
-            modify $ functions . ix uid .~ Just (xs, scpsLocal, inst)
-          Nothing -> go scps
+updateFunction :: Name -> Binding -> Execution ()
+updateFunction f bnd =
+  gets (^. namespace . at f) >>= \case
+    Just (Right _) -> do
+      scp <- gets (^. namespace . scope)
+      modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
+    Just (Left _) ->
+      throw $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+    Nothing -> do
+      scp <- gets (^. namespace . scope)
+      modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
 
--- get
+-- query
 
-getVariable :: Name -> Execution Value
-getVariable x =
-  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> gets (^. scopes) >>= \case
-    Just uid ->
-      gets (^. variables . at uid) >>= \case
-        Just (Just v) -> return v
-        _ -> execution_error $ printf "the variable `%s` cannot be mentioned before its assignment." (show x)
-    Nothing -> type_prohibited $ printf "the variable `%s` cannot be mentioned before its declaration." (show x)
+queryVariable :: Name -> Execution Value
+queryVariable x =
+  gets (^. namespace . at x) >>= \case
+    Just (Left (Just val)) ->
+      return val
+    Just (Left Nothing) ->
+      throw $ printf "the variable `%s` cannot be queried before it has a value" (show x)
+    Just (Right _) ->
+      throw $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+    Nothing ->
+      throw $ printf "the variable `%s` cannot be queried before its declaration" (show x)
 
-getVariable' :: Name -> Execution (Maybe Value)
-getVariable' x =
-  foldr (<|>) Nothing . map (^. variableUIDs . at x) <$> gets (^. scopes) >>= \case
-    Just uid ->
-      gets (^. variables . at uid) >>= \case
-        Just (Just v) -> return $ Just v
-        _ -> return Nothing
+queryVariable' :: Name -> Execution (Maybe (Maybe Value))
+queryVariable' x =
+  gets (^. namespace . at x) >>= \case
+    Just (Left (Just val)) ->
+      return $ Just (Just val)
+    Just (Left Nothing) ->
+      return $ Just Nothing
+    Just (Right _) ->
+      throw $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+    Nothing ->
+      return Nothing
+
+queryFunction :: Name -> Execution Closure
+queryFunction f =
+  gets (^. namespace . at f) >>= \case
+    Just (Right (Just clo)) -> return clo
+    Just (Right Nothing) -> throw $ printf "the function `%s` cannot be queried before it has a value" (show f)
+    Just (Left _) -> throw $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+    Nothing -> throw $ printf "the function `%s` cannot be queried before its declaration" (show f)
+
+queryFunction' :: Name -> Execution (Maybe (Maybe Closure))
+queryFunction' f =
+  gets (^. namespace . at f) >>= \case
+    Just (Right (Just clo)) -> return $ Just (Just clo)
+    Just (Right Nothing) -> return $ Just Nothing
+    Just (Left _) -> throw $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
     Nothing -> return Nothing
-
-getFunction :: Name -> Execution Closure
-getFunction f =
-  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> gets (^. scopes) >>= \case
-    Just uid ->
-      gets (^. functions . at uid) >>= \case
-        Just (Just clo) -> return clo
-        _ -> execution_error $ printf "the function `%s` cannot be mentioned before its assignment." (show f)
-    Nothing -> type_prohibited $ printf "the function `%s` cannot be mentioned before its declaration." (show f)
-
-getFunction' :: Name -> Execution (Maybe Closure)
-getFunction' f =
-  foldr (<|>) Nothing . map (^. functionUIDs . at f) <$> gets (^. scopes) >>= \case
-    Just uid ->
-      gets (^. functions . at uid) >>= \case
-        Just (Just clo) -> return $ Just clo
-        _ -> return Nothing
-    Nothing -> return Nothing
-
--- delete
-
-deleteVariable :: UID -> Execution ()
-deleteVariable uid = modify $ variables . at uid .~ Nothing
-
-deleteFunction :: UID -> Execution ()
-deleteFunction uid = modify $ functions . at uid .~ Nothing
 
 -- I/O
 

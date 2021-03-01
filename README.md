@@ -43,6 +43,14 @@ This project demonstrates the following tools:
 - error on duplicate names in same scope (requires using nested scoping in
   typechecking, so probably would be a good idea to just make a general data
   structure to use for both).
+- implement new namespacing structure in `Executing`
+- integrate `Interpreting` into `Main`
+- finish making new modulization for all REPL stuff
+  - grammar
+  - parsing
+  - typing/executing/interpreting
+  - commands
+  - interface
 
 ## Experimental
 

@@ -45,6 +45,7 @@ library:
     - FlexibleContexts
     - UndecidableInstances
     - DataKinds
+    - TypeFamilies
   ghc-options:
     - -Wall
     - -Wno-missing-signatures

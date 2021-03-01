@@ -1,6 +1,3 @@
-f(x: bool): bool =
-  return true;
-
 main(): void = {
   output_bool(true);
 }
