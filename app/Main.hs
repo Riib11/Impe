@@ -1,9 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-
 module Main where
 
 import Control.Lens
@@ -13,6 +7,7 @@ import Data.Version (showVersion)
 import Development.GitRev (gitHash)
 import Language.Impe.Executing as Executing
 import Language.Impe.Grammar as Grammar
+import Language.Impe.Interpreting as Interpreting
 import Language.Impe.Parsing as Parsing
 import Language.Impe.Typechecking as Typechecking
 import MainOptions
@@ -20,121 +15,68 @@ import Options.Applicative
 import Paths_impe (version)
 import Polysemy
 import Polysemy.Error as Error
+import Polysemy.Fail as Fail
 import Polysemy.Output as Output
 import Polysemy.Reader as Reader
 import Polysemy.State as State
 import System.IO as IO
 import Text.ParserCombinators.Parsec (runParser)
 import Text.Printf
+import Prelude hiding (log)
 
-main = return ()
+main :: IO ()
+main =
+  (runM . runFail) start >>= \case
+    Left err -> putStrLn err
+    Right () -> return ()
 
--- type Main a = Sem '[Reader MainOptions, Error String, Embed IO] a
+start :: Sem '[Fail, Embed IO] ()
+start = do
+  -- options
+  opts <- embed $ execParser parseMainOptions
+  -- mode
+  runReader opts do
+    asks mode >>= \case
+      Mode_Interpret -> startInterpret
+      Mode_Interactive -> startInteractive
 
--- type InterpretationContext = (TypecheckingContext, ExecutionContext)
+startInterpret :: Sem '[Reader MainOptions, Fail, Embed IO] ()
+startInterpret = do
+  -- filename
+  fn <-
+    asks input_filename >>= \case
+      Nothing ->
+        fail $ printf "[options error] options must provide an INPUT in order to use interpret mode"
+      Just fn -> return fn
+  -- read
+  log Phase_Reading $ printf "reading input file: %s" fn
+  src <- embed $ readFile fn
+  log Phase_Reading $ printf "read source:\n\n%s\n" src
+  -- parse
+  log Phase_Parsing $ printf "parsing source"
+  prgm <- case runParser program () fn src of
+    Left prsErr -> fail $ printf "[parsing error] %s" (show prsErr)
+    Right prgm -> return prgm
+  log Phase_Parsing $ printf "parsed program:\n\n%s\n" (show prgm)
+  -- interpret
+  log Phase_Interpreting $ printf "interpreting program"
+  itpCtx <-
+    (raise_ . runOutputList . runError . execState Interpreting.emptyContext)
+      (interpretProgram prgm)
+      >>= \case
+        (logs, Left err) -> fail err
+        (logs, Right itpCtx) -> return itpCtx
+  log Phase_Interpreting $ printf "interpreted context:\n\n%s\n" (show itpCtx)
+  -- output
+  embed . putStr . unlines $ itpCtx ^. executionContext . outputs
+  -- done
+  return ()
 
--- main :: IO ()
--- main = runM $ do
---   runError main' >>= \case
---     Left err -> embed . putStrLn $ err
---     Right () -> return ()
+startInteractive :: Sem '[Reader MainOptions, Fail, Embed IO] ()
+startInteractive = return () -- TODO
 
--- main' :: Sem '[Error String, Embed IO] ()
--- main' = do
---   opts <- embed $ execParser parseMainOptions
---   runReader opts do
---     asks mode >>= \case
---       Mode_Interpret -> mainInterpret
---       Mode_Interactive -> mainInteractive
-
--- mainInterpret :: Main ()
--- mainInterpret =
---   asks input_filename >>= \case
---     Nothing ->
---       throw "[options: error] must have an INPUT for interpret mode."
---     Just fn -> do
---       ctx <- interpretFile fn
---       case ctx ^. _2 . outputs of
---         [] -> return ()
---         outs -> embed . putStr . unlines $ outs
-
--- mainInteractive :: Main ()
--- mainInteractive = do
---   opts <- ask
---   ctx <-
---     asks input_filename >>= \case
---       Nothing -> interpretPrelude
---       Just fn -> interpretFile fn
---   embed $ repl opts ctx
-
--- interpretPrelude :: Main InterpretationContext
--- interpretPrelude = do
---   let prog = Program []
---   tcCtx <- mainTypecheckProgram prog
---   exCtx <- mainExecuteProgram prog
---   return (tcCtx, exCtx)
-
--- interpretFile :: String -> Main InterpretationContext
--- interpretFile fn = do
---   src <- mainReadInputFile fn
---   prog <- mainParseProgram fn src
---   tcCtx <- mainTypecheckProgram prog
---   exCtx <- mainExecuteProgram prog
---   return (tcCtx, exCtx)
-
--- mainReadInputFile :: String -> Main String
--- mainReadInputFile fn = do
---   mainDisplay Phase_Reading $ printf "[reading] %s" fn
---   embed $ readFile fn
-
--- mainParseProgram :: String -> String -> Main Program
--- mainParseProgram fn src = do
---   mainDisplay Phase_Parsing "[parsing]"
---   case runParser program () fn src of
---     Left err ->
---       throw . unlines $
---         ["[parsing error]", "", show err, ""]
---     Right prog -> do
---       mainDisplay Phase_Parsing . unlines $
---         ["[parsing success]", "", "program:", show prog, ""]
---       return prog
-
--- mainTypecheckProgram :: Program -> Main TypecheckingContext
--- mainTypecheckProgram prog = do
---   mainDisplay Phase_Typechecking "[typechecking]"
---   case runTypecheck emptyTypecheckingContext (processProgram prog) of
---     (logs, Left err) ->
---       throw . unlines $
---         ["[typecheck error]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", "typechecking error:", err]
---     (logs, Right (tcCtx, ())) -> do
---       mainDisplay Phase_Typechecking . unlines $
---         ["[typecheck success]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", show tcCtx, ""]
---       return tcCtx
-
--- mainExecuteProgram :: Program -> Main ExecutionContext
--- mainExecuteProgram prog = do
---   mainDisplay Phase_Executing "[executing]"
---   case runExecution emptyExecutionContext (executeProgram prog) of
---     (logs, Left err) ->
---       throw . unlines $
---         ["[execution error]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", "execution error:", show err]
---     (logs, Right (exCtx, ())) -> do
---       mainDisplay Phase_Executing . unlines $
---         ["[execution success]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", show exCtx]
---       return exCtx
-
--- {-
--- ## Utilities
--- -}
-
--- mainDisplay :: Phase -> String -> Main ()
--- mainDisplay phase msg = do
---   phases <- asks verbosity
---   when (phase `elem` phases) $
---     embed (putStrLn msg)
-
--- replDisplay :: Phase -> String -> REPL ()
--- replDisplay phase msg = do
---   phases <- asks verbosity
---   when (phase `elem` phases) $
---     embed (putStrLn msg)
+log :: Phase -> String -> Sem '[Reader MainOptions, Fail, Embed IO] ()
+log phs msg =
+  elem phs <$> asks verbosity >>= \case
+    True -> embed . putStrLn $ printf "[%s] %s" (show phs) msg
+    False -> return ()

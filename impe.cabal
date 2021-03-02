@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f8cd6f2d80680e0d7181c74d4ceea191eddebefc2db0b33c9ac906961953a25f
+-- hash: 857ce450d77e96da939f08fbb80b47a77ad0f3f11040e1aa1feeb869c8ae40d7
 
 name:           impe
 version:        0.1.0.0
@@ -39,7 +39,7 @@ library
       Paths_impe
   hs-source-dirs:
       src
-  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies ApplicativeDo
   ghc-options: -Wall -Wno-missing-signatures -Wno-unused-do-bind -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
@@ -58,12 +58,10 @@ executable impe-exe
   other-modules:
       MainOptions
       REPL
-      REPL.Executing
-      REPL.Parsing
-      REPL.Typechecking
       Paths_impe
   hs-source-dirs:
       app
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies ApplicativeDo
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
@@ -85,6 +83,7 @@ test-suite impe-test
       Paths_impe
   hs-source-dirs:
       test
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies ApplicativeDo
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5

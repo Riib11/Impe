@@ -195,7 +195,7 @@ typecheckTypes s t =
     else throw $ printf "cannot unify type\n\n  %s\n\nwith type\n\n  %s\n\n" (show s) (show t)
 
 {-
-## Utilities
+## Namespace
 -}
 
 subscope :: Typecheck a -> Typecheck a
@@ -213,3 +213,7 @@ getType n =
 
 setType :: Name -> Type -> Typecheck ()
 setType n t = modify $ namespace . at n .~ Just t
+
+{-
+## Utilties
+-}

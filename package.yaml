@@ -46,6 +46,7 @@ library:
     - UndecidableInstances
     - DataKinds
     - TypeFamilies
+    - ApplicativeDo
   ghc-options:
     - -Wall
     - -Wno-missing-signatures
@@ -56,6 +57,19 @@ executables:
   impe-exe:
     main: Main.hs
     source-dirs: app
+    default-extensions:
+      - GADTs
+      - LambdaCase
+      - BlockArguments
+      - TemplateHaskell
+      - RankNTypes
+      - FlexibleInstances
+      - MultiParamTypeClasses
+      - FlexibleContexts
+      - UndecidableInstances
+      - DataKinds
+      - TypeFamilies
+      - ApplicativeDo
     ghc-options:
       - -threaded
       - -rtsopts
@@ -68,6 +82,19 @@ tests:
   impe-test:
     main: Spec.hs
     source-dirs: test
+    default-extensions:
+      - GADTs
+      - LambdaCase
+      - BlockArguments
+      - TemplateHaskell
+      - RankNTypes
+      - FlexibleInstances
+      - MultiParamTypeClasses
+      - FlexibleContexts
+      - UndecidableInstances
+      - DataKinds
+      - TypeFamilies
+      - ApplicativeDo
     ghc-options:
       - -threaded
       - -rtsopts

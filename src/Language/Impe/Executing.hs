@@ -332,3 +332,7 @@ readInput =
     s : inputs' -> do
       modify $ inputs .~ inputs'
       return $ Just s
+
+{-
+## Utilities
+-}

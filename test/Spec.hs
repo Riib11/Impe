@@ -40,14 +40,14 @@ interpretFile fn = do
   print prgm
   --
   putStrLn "[typechecking]"
-  tcCtx <- case run . runOutputList . runError . execState Typechecking.emptyContext $ typecheckProgram prgm of
+  tchCtx <- case run . runOutputList . runError . execState Typechecking.emptyContext $ typecheckProgram prgm of
     (logs, Left tcErr) -> error tcErr
-    (logs, Right tcCtx) -> return tcCtx
-  print tcCtx
+    (logs, Right tchCtx) -> return tchCtx
+  print tchCtx
   --
   putStrLn "[executing]"
-  exCtx <- case run . runOutputList . runError . execState Executing.emptyContext $ executeProgram prgm of
+  exeCtx <- case run . runOutputList . runError . execState Executing.emptyContext $ executeProgram prgm of
     (logs, Left exErr) -> error exErr
-    (logs, Right exCtx) -> return exCtx
-  print exCtx
+    (logs, Right exeCtx) -> return exeCtx
+  print exeCtx
   return ()

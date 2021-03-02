@@ -1,20 +1,13 @@
 module Language.Impe.Interpreting where
 
-import Control.Applicative
 import Control.Lens hiding (Context)
-import Control.Monad
-import Data.List (intercalate)
-import Data.Map as Map hiding (foldr, map)
-import Data.Maybe
 import qualified Language.Impe.Executing as Executing
 import Language.Impe.Grammar
-import Language.Impe.Primitive
 import qualified Language.Impe.Typechecking as Typechecking
 import Polysemy
 import Polysemy.Error as Error
 import Polysemy.Output as Output
 import Polysemy.State as State
-import Text.Printf
 
 {-
 # Interpreting
@@ -33,7 +26,6 @@ data Context = Context
   { _typecheckingContext :: Typechecking.Context,
     _executionContext :: Executing.Context
   }
-  deriving (Show)
 
 type Interpretation a =
   Sem
@@ -47,19 +39,17 @@ makeLenses ''Context
 
 -- instances
 
--- TODO
+instance Show Context where
+  show ctx =
+    unlines
+      [ "interpretation context:",
+        (unlines . map ("  " ++) . lines . show)
+          (ctx ^. typecheckingContext),
+        (unlines . map ("  " ++) . lines . show)
+          (ctx ^. executionContext)
+      ]
 
 -- interface
-
-runInterpretation ::
-  Context ->
-  Interpretation a ->
-  ([String], Either String (Context, a))
-runInterpretation ctx =
-  run
-    . runOutputList
-    . runError
-    . runState ctx
 
 emptyContext :: Context
 emptyContext =
@@ -72,15 +62,14 @@ emptyContext =
 ## Computation
 -}
 
--- TODO
--- interpretProgram :: Interpretation ()
--- interpretProgram = do
---   -- typechecking
---   tcCtx <- gets (^. typecheckingContext)
---   (tcCtx', ()) <- runState tcCtx Typechecking.typecheckProgram
---   -- executing
---   exCtx <- gets (^. executionContext)
---   (exCtx', ()) <- runState exCtx Executing.executeProgram
---   -- update context
---   modify $ typecheckingContext .~ tcCtx'
---   modify $ executionContext .~ exCtx'
+interpretProgram :: Program -> Interpretation ()
+interpretProgram prgm = do
+  -- typechecking
+  tchCtx <- gets (^. typecheckingContext)
+  tchCtx' <- raise . execState tchCtx $ Typechecking.typecheckProgram prgm
+  -- execution
+  exeCtx <- gets (^. executionContext)
+  exeCtx' <- raise . execState exeCtx $ Executing.executeProgram prgm
+  -- update
+  modify $ typecheckingContext .~ tchCtx'
+  modify $ executionContext .~ exeCtx'

@@ -39,15 +39,15 @@ module REPL where
 --   src <- replReadInput
 --   replParseInput src >>= \case
 --     InstructionREPL inst -> do
---       (tcCtx, t) <- replTypecheckInstruction ctx inst
---       (exCtx', mb_v) <- replExecuteInstruction ctx inst
---       return ((tcCtx, exCtx'), (,t) <$> mb_v)
+--       (tchCtxx, t) <- replTypecheckInstruction ctx inst
+--       (exeCtxx', mb_v) <- replExecuteInstruction ctx inst
+--       return ((tchCtxx, exeCtxx'), (,t) <$> mb_v)
 --     ExpressionREPL e -> do
 --       -- TODO: does this actually work right???
 --       let inst = Return e
---       (tcCtx, t) <- replTypecheckInstruction ctx inst
---       (exCtx', mb_v) <- replExecuteInstruction ctx inst
---       return ((tcCtx, exCtx'), (,t) <$> mb_v)
+--       (tchCtxx, t) <- replTypecheckInstruction ctx inst
+--       (exeCtxx', mb_v) <- replExecuteInstruction ctx inst
+--       return ((tchCtxx, exeCtxx'), (,t) <$> mb_v)
 --     CommandREPL cmd ->
 --       case cmd of
 --         CommandREPL_Quit -> throw () -- escape REPL
@@ -58,7 +58,7 @@ module REPL where
 --               putStrLn . show $ ctx ^. _2
 --           return (ctx, Nothing)
 --         CommandREPL_GetType inst -> do
---           (tcCtx, t) <- replTypecheckInstruction ctx inst
+--           (tchCtxx, t) <- replTypecheckInstruction ctx inst
 --           embed . putStrLn . show $ t
 --           return (ctx, Nothing)
 
@@ -87,10 +87,10 @@ module REPL where
 --     (logs, Left err) ->
 --       throw . unlines $
 --         ["[typecheck error]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", "typechecking error: " ++ err]
---     (logs, Right (tcCtx, t)) -> do
+--     (logs, Right (tchCtxx, t)) -> do
 --       replDisplay Phase_Typechecking . unlines $
---         ["[typecheck success]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", show tcCtx, ""]
---       return (tcCtx, t)
+--         ["[typecheck success]", "", "typechecking logs:", "  " ++ intercalate "\n  " logs, "", show tchCtxx, ""]
+--       return (tchCtxx, t)
 
 -- replExecuteInstruction :: InterpretationContext -> Instruction -> REPL (ExecutionContext, Maybe Value)
 -- replExecuteInstruction ctx inst = do
@@ -99,7 +99,7 @@ module REPL where
 --     (logs, Left err) ->
 --       throw . unlines $
 --         ["[execution error]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", "execution error:", show err]
---     (logs, Right (exCtx, mb_v)) -> do
+--     (logs, Right (exeCtxx, mb_v)) -> do
 --       replDisplay Phase_Executing . unlines $
---         ["[execution success]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", show exCtx]
---       return (exCtx, mb_v)
+--         ["[execution success]", "", "execution logs:", "  " ++ intercalate "\n  " logs, "", show exeCtxx]
+--       return (exeCtxx, mb_v)
