@@ -78,6 +78,13 @@ instance Ord n => At (Namespace n a) where
 newUID :: n -> Namespace n a -> (Namespace n a, UID n)
 newUID n nsp = (nsp & counter %~ succ, (n, nsp ^. counter))
 
+initialize :: Ord n => n -> a -> Namespace n a -> Namespace n a
+initialize n a nsp =
+  let (nsp', uid) = newUID n nsp
+   in nsp'
+        & (scope %~ insertIntoScope n uid)
+          . (store %~ insertIntoStore uid a)
+
 -- lookup
 
 lookup :: Ord n => n -> Namespace n a -> Maybe a
@@ -98,19 +105,20 @@ insert n a nsp =
   case lookupFromScope n (nsp ^. scope) of
     Just uid ->
       nsp
-        & (scope %~ insertFromScope n uid)
-          . (store %~ insertFromStore uid a)
+        & (scope %~ insertIntoScope n uid)
+          . (store %~ insertIntoStore uid a)
     Nothing ->
-      let (nsp', uid) = newUID n nsp
-       in nsp'
-            & (scope %~ insertFromScope n uid)
-              . (store %~ insertFromStore uid a)
+      -- let (nsp', uid) = newUID n nsp
+      --  in nsp'
+      --       & (scope %~ insertIntoScope n uid)
+      --         . (store %~ insertIntoStore uid a)
+      nsp
 
-insertFromScope :: Ord n => n -> UID n -> Scope n -> Scope n
-insertFromScope n uid (m :| scp) = Map.insert n uid m :| scp
+insertIntoScope :: Ord n => n -> UID n -> Scope n -> Scope n
+insertIntoScope n uid (m :| scp) = Map.insert n uid m :| scp
 
-insertFromStore :: Ord n => UID n -> a -> Store n a -> Store n a
-insertFromStore uid a str = Map.insert uid a str
+insertIntoStore :: Ord n => UID n -> a -> Store n a -> Store n a
+insertIntoStore uid a str = Map.insert uid a str
 
 -- delete
 

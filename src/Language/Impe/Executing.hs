@@ -39,8 +39,8 @@ type Closure = (Binding, Scope Name)
 
 type Execution a =
   Sem
-    '[ State Context,
-       Error String,
+    '[ Error String,
+       State Context,
        Output String
      ]
     a
@@ -52,30 +52,35 @@ makeLenses ''Context
 instance Show Context where
   show ctx =
     unlines
-      [ "execution context:",
-        "  namespace:",
-        "    scope:",
-        printf "      %s" (show $ ctx ^. namespace . scope . to NonEmpty.toList),
-        "    store:",
+      [ "namespace:",
+        "  scope:",
+        "    "
+          ++ ctx
+          ^. namespace . scope
+            . to NonEmpty.toList
+            . to (map Map.elems)
+            . to (map show)
+            . to (List.intercalate "\n    "),
+        "  store:",
         unlines
           . map
             ( \((x, i), e) -> case e of
                 Left mb_val -> case mb_val of
                   Just val ->
-                    printf "      var %s#%s = %s" (show x) (show i) (show val)
+                    printf "    var %s#%s = %s" (show x) (show i) (show val)
                   Nothing ->
-                    printf "      var %s undefined" (show x)
+                    printf "    var %s undefined" (show x)
                 Right mb_clo -> case mb_clo of
                   Just ((xs, inst), _) ->
-                    printf "      fun %s(%s) = %s" (show x) (List.intercalate ", " . map show $ xs) (show inst)
+                    printf "    fun %s(%s) = %s" (show x) (List.intercalate ", " . map show $ xs) (show inst)
                   Nothing ->
-                    printf "      fun %s undefined" (show x)
+                    printf "    fun %s undefined" (show x)
             )
           $ ctx ^. namespace . store . to Map.toList,
-        "    inputs:",
-        "      " ++ List.intercalate ("\n      ") (ctx ^. inputs),
-        "    outputs:",
-        "      " ++ List.intercalate ("\n      ") (ctx ^. outputs)
+        "inputs:",
+        "    " ++ ctx ^. inputs . to (List.intercalate "\n    "),
+        "outputs:",
+        "    " ++ ctx ^. outputs . to (List.intercalate "\n    ")
       ]
 
 {-
@@ -97,12 +102,14 @@ emptyContext =
 executeProgram :: Program -> Execution ()
 executeProgram = \case
   Program insts -> do
+    output "execute program"
     executePrelude
     mapM_ executeInstruction insts
     executeMain
 
 executePrelude :: Execution ()
 executePrelude = do
+  output "execute prelude"
   mapM_
     ( \(x, _) ->
         do
@@ -120,10 +127,11 @@ executePrelude = do
 executeMain :: Execution ()
 executeMain = do
   queryFunction' mainName >>= \case
-    Just (Just (([], _), _)) ->
+    Just (Just (([], _), _)) -> do
+      output "execute main"
       void $ executeInstruction (ProcedureCall mainName [])
     Just (Just ((_, _), _)) ->
-      throw $ "[type prohibited] the main function must take 0 arguments"
+      throw $ "the main function must take 0 arguments" -- type prohibited
     Just Nothing ->
       throw $ "the main function was declared but not defined"
     Nothing ->
@@ -135,42 +143,52 @@ executeMain = do
 -}
 
 executeInstruction :: Instruction -> Execution (Maybe Value)
-executeInstruction = \case
-  Block insts -> locallyScoped do
-    foldl (<|>) Nothing <$> traverse executeInstruction insts
+executeInstruction inst_ = case inst_ of
+  Block insts -> subScope do
+    output "execute block start"
+    mb_v <- foldl (<|>) Nothing <$> traverse executeInstruction insts
+    output "execute block end"
+    return mb_v
   Declaration x _ -> do
+    output $ printf "execute declaration: %s" (show inst_)
     declareVariable x
     return Nothing
   Assignment x e -> do
-    updateVariable x =<< evaluateExpression e
+    output $ printf "execute assignment: %s" (show inst_)
+    queryVariable' x >>= \case
+      Just _ -> updateVariable x =<< evaluateExpression e
+      Nothing -> throw $ printf "the variable `%s` cannot be updated before its declaration" (show x)
     return Nothing
   Function f params _ inst -> do
+    output $ printf "execute function definition: %s" (show inst_)
     declareFunction f
     updateFunction f (fst <$> params, inst)
     return Nothing
-  Conditional e inst1 inst2 ->
+  Conditional e inst1 inst2 -> do
+    output $ printf "execute conditional: %s" (show inst_)
     evaluateExpression e >>= \case
-      Bool True -> locallyScoped $ executeInstruction inst1
-      Bool False -> locallyScoped $ executeInstruction inst2
+      Bool True -> subScope $ executeInstruction inst1
+      Bool False -> subScope $ executeInstruction inst2
       _ -> throw $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
-  Loop e inst ->
+  Loop e inst -> do
+    output $ printf "execute loop: %s" (show inst_)
     evaluateExpression e >>= \case
-      Bool True -> locallyScoped $ executeInstruction $ Loop e inst
+      Bool True -> subScope $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
       _ -> throw $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
-  Return e ->
+  Return e -> do
+    output $ printf "execute return: %s" (show inst_)
     Just <$> evaluateExpression e
   ProcedureCall f args -> do
+    output $ printf "execute procedure call: %s" (show inst_)
     ((xs, inst), scp) <- queryFunction f
-
+    -- evaluate arguments in outer scope
+    vs <- mapM evaluateExpression args
     withScope scp do
+      -- declare argument bindings in inner scope
       mapM_
-        ( \(x, e) -> do
-            v <- evaluateExpression e
-            declareVariable x
-            updateVariable x v
-        )
-        (zip xs args)
+        (\(x, v) -> do declareVariable x; updateVariable x v)
+        (zip xs vs)
       void $ executeInstruction inst
       return Nothing
   PrimitiveFunctionBody f xs ->
@@ -178,6 +196,7 @@ executeInstruction = \case
 
 executePrimitiveFunctionBody :: Name -> [Name] -> Execution (Maybe Value)
 executePrimitiveFunctionBody f xs = do
+  output $ printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
   args <- mapM queryVariable xs
   case (f, args) of
     (Name "&&", [Bool p, Bool q]) ->
@@ -203,24 +222,25 @@ executePrimitiveFunctionBody f xs = do
 -}
 
 evaluateInstruction :: Instruction -> Execution Value
-evaluateInstruction inst =
+evaluateInstruction inst = do
+  output $ printf "evaluate instruction: %s" (show inst)
   executeInstruction inst >>= \case
     Just v -> return v
     Nothing -> throw $ printf "expected instruction `%s` to return a value." (show inst)
 
 evaluateExpression :: Expression -> Execution Value
-evaluateExpression = \case
-  Reference x -> queryVariable x
-  Application f es -> do
+evaluateExpression e_ = case e_ of
+  Reference x -> do
+    output $ printf "evaluate reference: %s" (show e_)
+    queryVariable x
+  Application f args -> do
+    output $ printf "evaluate application: %s" (show e_)
     ((xs, inst), scp) <- queryFunction f
+    -- evaluate arguments in outer scope
+    vs <- mapM evaluateExpression args
     withScope scp do
-      mapM_
-        ( \(x, e) -> do
-            v <- evaluateExpression e
-            declareVariable x
-            updateVariable x v
-        )
-        (zip xs es)
+      -- declare argument bindings in inner scope
+      mapM_ (\(x, v) -> do declareVariable x; updateVariable x v) (zip xs vs)
       evaluateInstruction inst
   v -> return v
 
@@ -230,28 +250,36 @@ evaluateExpression = \case
 
 -- scoping
 
-locallyScoped :: Execution a -> Execution a
-locallyScoped exe = do
+subScope :: Execution a -> Execution a
+subScope exe = do
+  output $ "entering local scope"
   modify $ namespace %~ enterScope -- enter local scope
   a <- exe
+  output $ "leaving local scope"
   modify $ namespace %~ leaveScope -- leave local scope
   return a
 
 withScope :: Scope Name -> Execution a -> Execution a
 withScope scp exe = do
+  output $ printf "entering scope: %s" (show scp)
   scpOri <- gets (^. namespace . scope)
   modify $ namespace . scope .~ scp -- adopt new scope
   a <- exe
+  output $ printf "leaving scope: %s" (show scp)
   modify $ namespace . scope .~ scpOri -- resert original scope
   return a
 
 -- declare
 
 declareVariable :: Name -> Execution ()
-declareVariable x = modify $ namespace . at x .~ Just (Left Nothing)
+declareVariable x =
+  -- modify $ namespace . at x .~ Just (Left Nothing)
+  modify $ namespace %~ initialize x (Left Nothing)
 
 declareFunction :: Name -> Execution ()
-declareFunction f = modify $ namespace . at f .~ Just (Right Nothing)
+declareFunction f =
+  -- modify $ namespace . at f .~ Just (Right Nothing)
+  modify $ namespace %~ initialize f (Right Nothing)
 
 -- update
 

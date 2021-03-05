@@ -1,17 +1,17 @@
 x: int;
 x <- 10;
 
+get1(): int = { return x; }
+
 f(): void = {
   x: int;
   x <- 0;
-  
-  inc(): void =
-    x <- +(x, 1);
 
-  inc();
-  output_int(x);
+  get2(): int = { return x; }
+
+  output_int(get1()); // PROBLEM! somehow this returns the local x = 0 
+  
+  output_int(get2()); 
 }
 
-f();
-f();
 f();

@@ -10,14 +10,16 @@ primitive_variables =
 primitive_functions :: [(Name, [(Name, Type)], Type)]
 primitive_functions =
   make
-    <$> [ ("&&", [("p", BoolType), ("q", BoolType)], BoolType),
-          ("||", [("p", BoolType), ("q", BoolType)], BoolType),
-          ("+", [("x", IntType), ("y", IntType)], IntType),
-          ("-", [("x", IntType), ("y", IntType)], IntType),
-          ("*", [("x", IntType), ("y", IntType)], IntType),
-          ("output_bool", [("v", BoolType)], VoidType),
-          ("output_int", [("v", IntType)], VoidType)
-        ]
+    <$> [("output_int", [("v", IntType)], VoidType)]
   where
+    -- <$> [ ("&&", [("p", BoolType), ("q", BoolType)], BoolType),
+    --       ("||", [("p", BoolType), ("q", BoolType)], BoolType),
+    --       ("+", [("x", IntType), ("y", IntType)], IntType),
+    --       ("-", [("x", IntType), ("y", IntType)], IntType),
+    --       ("*", [("x", IntType), ("y", IntType)], IntType),
+    --       ("output_bool", [("v", BoolType)], VoidType),
+    --       ("output_int", [("v", IntType)], VoidType)
+    --     ]
+
     make :: (String, [(String, Type)], Type) -> (Name, [(Name, Type)], Type)
     make (f, params, t) = (Name f, (_1 %~ Name) <$> params, t)
