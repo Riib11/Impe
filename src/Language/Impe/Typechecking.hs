@@ -206,16 +206,16 @@ synthesizeExpression e_ = case e_ of
 
 typecheckIntermediateTypes :: Maybe Type -> Maybe Type -> Typecheck (Maybe Type)
 typecheckIntermediateTypes mb_t1 mb_t2 = do
-  output "typecheck intermediate types: %s ~ %s" (show mb_t1) (show mb_t2)
+  output $ printf "typecheck intermediate types: %s ~ %s" (show mb_t1) (show mb_t2)
   case (mb_t1, mb_t2) of
     (Nothing, Nothing) -> return Nothing
-    (Nothing, Just t) -> return Just t
-    (Just s, Nothing) -> return Just s
-    (Just s, Just t) -> return Just <$> typecheckTypes s t
+    (Nothing, Just t) -> return $ Just t
+    (Just s, Nothing) -> return $ Just s
+    (Just s, Just t) -> Just <$> typecheckTypes s t
 
 typecheckTypes :: Type -> Type -> Typecheck Type
 typecheckTypes s t = do
-  output "typecheck types: %s ~ %s" (show s) (show t)
+  output $ printf "typecheck types: %s ~ %s" (show s) (show t)
   if s == t
     then return s
     else throw $ printf "cannot unify type\n\n  %s\n\nwith type\n\n  %s\n\n" (show s) (show t)

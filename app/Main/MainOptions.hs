@@ -1,4 +1,4 @@
-module MainOptions where
+module Main.MainOptions where
 
 import Control.Lens
 import Control.Monad
@@ -13,7 +13,9 @@ import Options.Applicative
 import Paths_impe (version)
 import Polysemy
 import Polysemy.Error as Error
+import Polysemy.Fail as Fail
 import Polysemy.Output as Output
+import Polysemy.Reader as Reader
 import Polysemy.State as State
 import Text.ParserCombinators.Parsec (runParser)
 import Text.Printf
@@ -88,8 +90,8 @@ parseMainOptions =
     parseMode :: Parser Mode
     parseMode =
       flag
-        Mode_Interpret
         Mode_Interactive
+        Mode_Interpret
         (short 'i' <> long "interactive" <> help "interactive REPL")
 
     parseVerbosity :: Parser [Phase]
