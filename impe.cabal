@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 91c1455ae283003a54293a894117fc233bc0d119f5980504d630625dbf5e99d0
+-- hash: d9a626864a60412fb94f3bfee547a6ddf6f01f00f91c6c61d8c3103c7c0d2991
 
 name:           impe
 version:        0.1.0.0
@@ -28,10 +28,12 @@ source-repository head
 library
   exposed-modules:
       Data.Namespace
+      Language.Impe.Excepting
       Language.Impe.Executing
       Language.Impe.Grammar
       Language.Impe.Interpreting
       Language.Impe.Lexing
+      Language.Impe.Logging
       Language.Impe.Parsing
       Language.Impe.Primitive
       Language.Impe.Typechecking
@@ -39,7 +41,7 @@ library
       Paths_impe
   hs-source-dirs:
       src
-  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies ApplicativeDo
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeOperators TypeFamilies ApplicativeDo
   ghc-options: -Wall -Wno-missing-signatures -Wno-unused-do-bind -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
@@ -56,15 +58,18 @@ library
 executable impe-exe
   main-is: Main.hs
   other-modules:
-      Main.Interactive
-      Main.Interactive.Grammar
-      Main.Interactive.Lexing
-      Main.Interactive.Parsing
-      Main.MainOptions
+      Main.Config
+      Main.Config.Grammar
+      Main.Config.Parsing
+      Main.Excepting
+      Main.Interacting
+      Main.Interacting.Grammar
+      Main.Interacting.Lexing
+      Main.Interacting.Parsing
       Paths_impe
   hs-source-dirs:
       app
-  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies ApplicativeDo
+  default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies TypeOperators ApplicativeDo
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5

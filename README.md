@@ -40,12 +40,16 @@ This project demonstrates the following tools:
 
 ## To Do
 
-- error on duplicate names in same scope (requires using nested scoping in
-  typechecking, so probably would be a good idea to just make a general data
-  structure to use for both).
-- implement new namespacing structure in `Executing`
-- integrate `Interpreting` into `Main`
-- finish making new modulization for all REPL stuff
+- [ ] organize effects by newtype-wrapping logs and errors
+- [ ] abstract away interpreting programs/instruction/expression somehow
+- [ ] Main.Config module for grammar/parsing of command-line options
+- [ ] redefine synonyms to use `Member <effect> r => Sem r <type>` rather than
+      explicitly defining a list of effects
+
+- [x] error on duplicate names in same scope (requires using nested scoping in
+      typechecking, so probably would be a good idea to just make a general data
+      structure to use for both).
+- [x] finish making new modulization for all REPL stuff
   - grammar
   - parsing
   - typing/executing/interpreting

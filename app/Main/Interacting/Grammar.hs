@@ -1,7 +1,6 @@
-module Main.Interactive.Grammar where
+module Main.Interacting.Grammar where
 
 import Language.Impe.Grammar
-import Text.ParserCombinators.Parsec
 
 data Command
   = Command_Instruction Instruction
@@ -14,14 +13,3 @@ data MetaCommand
   | MetaCommand_Quit
   | MetaCommand_Help
   deriving (Show)
-
-{-
-## Error
--}
-
-data MainError
-  = MainError String
-  | MainExit
-
-data InteractiveError
-  = InteractiveError String

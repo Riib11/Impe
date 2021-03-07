@@ -44,6 +44,7 @@ library:
     - FlexibleContexts
     - UndecidableInstances
     - DataKinds
+    - TypeOperators
     - TypeFamilies
     - ApplicativeDo
   ghc-options:
@@ -68,6 +69,7 @@ executables:
       - UndecidableInstances
       - DataKinds
       - TypeFamilies
+      - TypeOperators
       - ApplicativeDo
     ghc-options:
       - -threaded

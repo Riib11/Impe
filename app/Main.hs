@@ -5,25 +5,25 @@ import Control.Monad
 import Data.List (intercalate)
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
-import Language.Impe.Executing as Executing
-import Language.Impe.Grammar as Grammar
-import Language.Impe.Interpreting as Interpreting
-import Language.Impe.Parsing as Parsing
-import Language.Impe.Typechecking as Typechecking
-import Main.Interactive hiding (log)
-import Main.Interactive.Grammar
-import Main.MainOptions
+import qualified Language.Impe.Executing as Executing
+import Language.Impe.Interpreting
+import Language.Impe.Logging
+import qualified Language.Impe.Typechecking as Typechecking
+import Main.Config
+import Main.Config.Grammar
+import Main.Excepting as Excepting
+import Main.Interacting as Interacting
 import Options.Applicative
 import Paths_impe (version)
-import Polysemy
-import Polysemy.Error as Error
-import Polysemy.Output as Output
-import Polysemy.Reader as Reader
-import Polysemy.State as State
-import System.IO as IO
+import Polysemy hiding (interpret)
+import Polysemy.Error (Error, runError)
+import Polysemy.Output
+import Polysemy.Reader
+import Polysemy.State
+import System.IO as IO hiding (interact)
 import Text.ParserCombinators.Parsec (runParser)
 import Text.Printf
-import Prelude hiding (log)
+import Prelude hiding (interact, log)
 
 {-
 # Main
@@ -32,101 +32,95 @@ import Prelude hiding (log)
 main :: IO ()
 main =
   (runM . runError) start >>= \case
-    Left (MainError err) -> putStr err
-    Left MainExit -> return ()
+    Left err -> print err
     Right () -> return ()
 
-start :: Sem '[Error MainError, Embed IO] ()
+start ::
+  Sem
+    '[ Error Exception,
+       Embed IO
+     ]
+    ()
 start = do
-  -- options
-  opts <- embed $ execParser parseMainOptions
-  -- mode
-  runReader opts do
-    asks mode >>= \case
-      Mode_Interpret -> startInterpret
-      Mode_Interactive -> startInteractive
+  cfg <- parseConfig
+  case cfg & mode of
+    Mode_Interpret ->
+      runReader cfg startInterpret
+    Mode_Interact ->
+      runReader cfg startInteract
 
-startInterpret :: Sem '[Reader MainOptions, Error MainError, Embed IO] ()
+startInterpret ::
+  Sem
+    '[ Reader Config,
+       Error Exception,
+       Embed IO
+     ]
+    ()
 startInterpret = do
-  --
-  -- filename
-  --
+  -- get filename
   fn <-
-    asks input_filename >>= \case
-      Nothing ->
-        throw . MainError $ printf "[options error]\noptions must provide an INPUT in order to use interpret mode\n"
+    asks source_filename >>= \case
       Just fn -> return fn
-  --
-  -- read
-  --
-  log Phase_Reading $ printf "reading input file: %s\n" fn
+      Nothing -> throw . Exception_Config $ "interpretation mode requires an input source file"
+  -- read source
   src <- embed $ readFile fn
-  log Phase_Reading $ printf "read source:\n\n%s\n" src
-  --
-  -- parse
-  --
-  log Phase_Parsing $ "parsing source\n"
-  prgm <- case runParser program () fn src of
-    Left prsErr -> throw . MainError $ printf "[parsing error]\n%s" (show prsErr)
-    Right prgm -> return prgm
-  log Phase_Parsing $ printf "parsed program:\n\n%s\n" (show prgm)
-  --
-  -- typecheck
-  --
-  log Phase_Typechecking $ "typechecking program\n"
-  tchCtx <-
-    (raise_ . runOutputList . runState Typechecking.emptyContext . runError)
-      (typecheckProgram prgm)
-      >>= \case
-        (logs, (tchCtx, Left err)) ->
-          throw . MainError . concat $
-            [ printf "[typechecking] logs\n\n%s\n" (unlines logs),
-              printf "[typechecking] context\n\n%s" (show tchCtx),
-              printf "[typechecking] error\n\n%s\n" err
-            ]
-        (logs, (tchCtx, Right ())) -> do
-          log Phase_Typechecking $ printf "[typechecking logs\n\n%s" (unlines logs)
-          log Phase_Typechecking $ printf "[typechecking] context\n\n%s" (show tchCtx)
-          return tchCtx
-  --
-  -- execute
-  --
-  log Phase_Executing $ "executing program\n"
-  exeCtx <-
-    (raise_ . runOutputList . runState Executing.emptyContext . runError)
-      (executeProgram prgm)
-      >>= \case
-        (logs, (exeCtx, Left err)) ->
-          throw . MainError . concat $
-            [ printf "[execution logs]\n%s\n" (unlines logs),
-              printf "[execution context]\n%s" (show exeCtx),
-              printf "[execution error]\n%s\n" err
-            ]
-        (logs, (exeCtx, Right ())) -> do
-          log Phase_Executing $ printf "[execution] logs\n\n%s" (unlines logs)
-          log Phase_Executing $ printf "[execution] context\n\n%s" (show exeCtx)
-          return exeCtx
-  --
-  -- output
-  --
-  case exeCtx ^. outputs . to reverse of
-    [] -> return ()
-    os -> embed . putStr . unlines $ os
-  --
-  -- done
-  --
-  return ()
+  ( runError
+      . evalState Executing.emptyContext
+      . evalState Typechecking.emptyContext
+      . runOutputSem handleOutputLog
+    )
+    ( do
+        -- interpret source
+        interpretProgram fn src
+        -- log outputs
+        Executing.logOutputs
+    )
+    >>= \case
+      Left exp -> throw . Exception_Interpretation $ exp
+      Right () -> return ()
 
-{-
-### Logging
--}
+startInteract ::
+  Sem
+    '[ Reader Config,
+       Error Exception,
+       Embed IO
+     ]
+    ()
+startInteract = do
+  -- get filename and source
+  (fn, src) <-
+    asks source_filename >>= \case
+      -- get filename
+      Just fn -> do
+        src <- embed $ readFile fn
+        return (fn, src)
+      -- default empty source file
+      Nothing ->
+        return ("default", "")
 
-log ::
-  (Member (Reader MainOptions) r, Member (Embed IO) r) =>
-  Phase ->
-  String ->
+  ( runError
+      . evalState Executing.emptyContext
+      . evalState Typechecking.emptyContext
+      . runOutputSem handleOutputLog
+    )
+    ( do
+        -- interpret source
+        interpretProgram fn src
+        log Tag_Output "[impe - interact] start"
+        -- interact with context
+        interact
+    )
+    >>= \case
+      Left exp -> throw . Exception_Interaction $ exp
+      Right () -> return ()
+
+handleOutputLog ::
+  ( Member (Embed IO) r,
+    Member (Reader Config) r
+  ) =>
+  Log ->
   Sem r ()
-log phs msg =
-  elem phs <$> asks verbosity >>= \case
-    True -> embed . putStr $ printf "[%s] %s" (show phs) msg
-    False -> return ()
+handleOutputLog log@(Log tag msg) = do
+  Verbosity tags <- asks verbosity
+  when (tag `elem` tags) $
+    embed $ printf "%s" (show log)

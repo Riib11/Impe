@@ -1,6 +1,7 @@
 module Language.Impe.Grammar where
 
 import Data.List (intercalate)
+import Data.Namespace
 import Text.Printf
 
 data Program
@@ -34,6 +35,12 @@ data Expression
   | Reference Name
   | Application Name [Expression]
   deriving (Eq)
+
+type Value = Expression
+
+type Binding = ([Name], Instruction)
+
+type Closure = (Binding, Scope Name)
 
 newtype Name
   = Name String

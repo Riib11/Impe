@@ -7,13 +7,16 @@ import qualified Data.List as List
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Namespace as Namespace
-import Language.Impe.Grammar
-import Language.Impe.Primitive
+import Language.Impe.Excepting as Excepting
+import Language.Impe.Grammar as Grammar
+import Language.Impe.Logging as Logging
+import Language.Impe.Primitive as Primitive
 import Polysemy
-import Polysemy.Error as Error
-import Polysemy.Output as Output
-import Polysemy.State as State
+import Polysemy.Error (Error)
+import Polysemy.Output (Output)
+import Polysemy.State
 import Text.Printf
+import Prelude hiding (log)
 
 {-
 # Execution
@@ -31,19 +34,12 @@ data Context = Context
     _outputs :: [String]
   }
 
-type Value = Expression
-
-type Binding = ([Name], Instruction)
-
-type Closure = (Binding, Scope Name)
-
-type Execution a =
-  Sem
-    '[ Error String,
-       State Context,
-       Output String
-     ]
-    a
+type Execution r a =
+  ( Member (State Context) r,
+    Member (Error Exception) r,
+    Member (Output Log) r
+  ) =>
+  Sem r a
 
 makeLenses ''Context
 
@@ -51,7 +47,7 @@ makeLenses ''Context
 
 instance Show Context where
   show ctx =
-    unlines
+    List.intercalate "\n" $
       [ "namespace:",
         "  scope:",
         "    "
@@ -61,8 +57,9 @@ instance Show Context where
             . to (map Map.elems)
             . to (map show)
             . to (List.intercalate "\n    "),
+        "",
         "  store:",
-        unlines
+        List.intercalate "\n"
           . map
             ( \((x, i), e) -> case e of
                 Left mb_val -> case mb_val of
@@ -77,8 +74,10 @@ instance Show Context where
                     printf "    fun %s undefined" (show x)
             )
           $ ctx ^. namespace . store . to Map.toList,
+        "",
         "inputs:",
         "    " ++ ctx ^. inputs . to (List.intercalate "\n    "),
+        "",
         "outputs:",
         "    " ++ ctx ^. outputs . to (List.intercalate "\n    ")
       ]
@@ -99,17 +98,17 @@ emptyContext =
 ## Processing
 -}
 
-executeProgram :: Program -> Execution ()
+executeProgram :: Program -> Execution r ()
 executeProgram = \case
   Program insts -> do
-    output "execute program"
+    log Tag_InfoInline "execute program"
     executePrelude
     mapM_ executeInstruction insts
     executeMain
 
-executePrelude :: Execution ()
+executePrelude :: Execution r ()
 executePrelude = do
-  output "execute prelude"
+  log Tag_InfoInline "execute prelude"
   mapM_
     ( \(x, _) ->
         do
@@ -124,16 +123,16 @@ executePrelude = do
     )
     primitive_functions
 
-executeMain :: Execution ()
+executeMain :: Execution r ()
 executeMain = do
   queryFunction' mainName >>= \case
     Just (Just (([], _), _)) -> do
-      output "execute main"
+      log Tag_InfoInline "execute main"
       void $ executeInstruction (ProcedureCall mainName [])
     Just (Just ((_, _), _)) ->
-      throw $ "the main function must take 0 arguments" -- type prohibited
+      throw . Exception_Misc $ "the main function must take 0 arguments" -- type prohibited
     Just Nothing ->
-      throw $ "the main function was declared but not defined"
+      throw . Exception_Misc $ "the main function was declared but not defined"
     Nothing ->
       return ()
   return ()
@@ -142,45 +141,45 @@ executeMain = do
 ## Execution
 -}
 
-executeInstruction :: Instruction -> Execution (Maybe Value)
+executeInstruction :: Instruction -> Execution r (Maybe Value)
 executeInstruction inst_ = case inst_ of
   Block insts -> subScope do
-    output "execute block start"
+    log Tag_InfoInline "execute block start"
     mb_v <- foldl (<|>) Nothing <$> traverse executeInstruction insts
-    output "execute block end"
+    log Tag_InfoInline "execute block end"
     return mb_v
   Declaration x _ -> do
-    output $ printf "execute declaration: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute declaration: %s" (show inst_)
     declareVariable x
     return Nothing
   Assignment x e -> do
-    output $ printf "execute assignment: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute assignment: %s" (show inst_)
     queryVariable' x >>= \case
       Just _ -> updateVariable x =<< evaluateExpression e
-      Nothing -> throw $ printf "the variable `%s` cannot be updated before its declaration" (show x)
+      Nothing -> throw . Exception_Misc $ printf "the variable `%s` cannot be updated before its declaration" (show x)
     return Nothing
   Function f params _ inst -> do
-    output $ printf "execute function definition: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute function definition: %s" (show inst_)
     declareFunction f
     updateFunction f (fst <$> params, inst)
     return Nothing
   Conditional e inst1 inst2 -> do
-    output $ printf "execute conditional: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute conditional: %s" (show inst_)
     evaluateExpression e >>= \case
       Bool True -> subScope $ executeInstruction inst1
       Bool False -> subScope $ executeInstruction inst2
-      _ -> throw $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
+      _ -> throw . Exception_Misc $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Loop e inst -> do
-    output $ printf "execute loop: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute loop: %s" (show inst_)
     evaluateExpression e >>= \case
       Bool True -> subScope $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
-      _ -> throw $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
+      _ -> throw . Exception_Misc $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e -> do
-    output $ printf "execute return: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute return: %s" (show inst_)
     Just <$> evaluateExpression e
   ProcedureCall f args -> do
-    output $ printf "execute procedure call: %s" (show inst_)
+    log Tag_InfoInline $ printf "execute procedure call: %s" (show inst_)
     ((xs, inst), scp) <- queryFunction f
     -- evaluate arguments in outer scope
     vs <- mapM evaluateExpression args
@@ -194,9 +193,9 @@ executeInstruction inst_ = case inst_ of
   PrimitiveFunctionBody f xs ->
     executePrimitiveFunctionBody f xs
 
-executePrimitiveFunctionBody :: Name -> [Name] -> Execution (Maybe Value)
+executePrimitiveFunctionBody :: Name -> [Name] -> Execution r (Maybe Value)
 executePrimitiveFunctionBody f xs = do
-  output $ printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
+  log Tag_InfoInline $ printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
   args <- mapM queryVariable xs
   case (f, args) of
     (Name "&&", [Bool p, Bool q]) ->
@@ -210,31 +209,31 @@ executePrimitiveFunctionBody f xs = do
     (Name "*", [Int x, Int y]) ->
       return . Just $ Int (x * y)
     (Name "output_bool", [Bool v]) -> do
-      writeOutput (show v)
+      writeOutput (if v then "true" else "false")
       return Nothing
     (Name "output_int", [Int v]) -> do
       writeOutput (show v)
       return Nothing
-    _ -> throw $ printf "the primitive function `%s` was not recognized" (show f)
+    _ -> throw . Exception_Misc $ printf "the primitive function `%s` was not recognized" (show f)
 
 {-
 ## Evaluation
 -}
 
-evaluateInstruction :: Instruction -> Execution Value
+evaluateInstruction :: Instruction -> Execution r Value
 evaluateInstruction inst = do
-  output $ printf "evaluate instruction: %s" (show inst)
+  log Tag_InfoInline $ printf "evaluate instruction: %s" (show inst)
   executeInstruction inst >>= \case
     Just v -> return v
-    Nothing -> throw $ printf "expected instruction `%s` to return a value." (show inst)
+    Nothing -> throw . Exception_Misc $ printf "expected instruction `%s` to return a value." (show inst)
 
-evaluateExpression :: Expression -> Execution Value
+evaluateExpression :: Expression -> Execution r Value
 evaluateExpression e_ = case e_ of
   Reference x -> do
-    output $ printf "evaluate reference: %s" (show e_)
+    log Tag_InfoInline $ printf "evaluate reference: %s" (show e_)
     queryVariable x
   Application f args -> do
-    output $ printf "evaluate application: %s" (show e_)
+    log Tag_InfoInline $ printf "evaluate application: %s" (show e_)
     ((xs, inst), scp) <- queryFunction f
     -- evaluate arguments in outer scope
     vs <- mapM evaluateExpression args
@@ -250,76 +249,76 @@ evaluateExpression e_ = case e_ of
 
 -- scoping
 
-subScope :: Execution a -> Execution a
+subScope :: Execution r a -> Execution r a
 subScope exe = do
-  output $ "entering local scope"
+  log Tag_InfoInline $ "entering local scope"
   modify $ namespace %~ enterScope -- enter local scope
   a <- exe
-  output $ "leaving local scope"
+  log Tag_InfoInline $ "leaving local scope"
   modify $ namespace %~ leaveScope -- leave local scope
   return a
 
-withScope :: Scope Name -> Execution a -> Execution a
+withScope :: Scope Name -> Execution r a -> Execution r a
 withScope scp exe = do
-  output $ printf "entering scope: %s" (show scp)
+  log Tag_InfoInline $ printf "entering scope: %s" (show scp)
   scpOri <- gets (^. namespace . scope)
   modify $ namespace . scope .~ scp -- adopt new scope
   a <- exe
-  output $ printf "leaving scope: %s" (show scp)
+  log Tag_InfoInline $ printf "leaving scope: %s" (show scp)
   modify $ namespace . scope .~ scpOri -- resert original scope
   return a
 
 -- declare
 
-declareVariable :: Name -> Execution ()
+declareVariable :: Name -> Execution r ()
 declareVariable x =
   -- modify $ namespace . at x .~ Just (Left Nothing)
   modify $ namespace %~ initialize x (Left Nothing)
 
-declareFunction :: Name -> Execution ()
+declareFunction :: Name -> Execution r ()
 declareFunction f =
   -- modify $ namespace . at f .~ Just (Right Nothing)
   modify $ namespace %~ initialize f (Right Nothing)
 
 -- update
 
-updateVariable :: Name -> Value -> Execution ()
+updateVariable :: Name -> Value -> Execution r ()
 updateVariable x val =
   gets (^. namespace . at x) >>= \case
     Just (Left _) ->
       modify $ namespace . at x .~ Just ((Left . Just) val)
     Just (Right _) ->
-      throw $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+      throw . Exception_Misc $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
     Nothing ->
       modify $ namespace . at x .~ Just ((Left . Just) val)
 
-updateFunction :: Name -> Binding -> Execution ()
+updateFunction :: Name -> Binding -> Execution r ()
 updateFunction f bnd =
   gets (^. namespace . at f) >>= \case
     Just (Right _) -> do
       scp <- gets (^. namespace . scope)
       modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
     Just (Left _) ->
-      throw $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+      throw . Exception_Misc $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
     Nothing -> do
       scp <- gets (^. namespace . scope)
       modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
 
 -- query
 
-queryVariable :: Name -> Execution Value
+queryVariable :: Name -> Execution r Value
 queryVariable x =
   gets (^. namespace . at x) >>= \case
     Just (Left (Just val)) ->
       return val
     Just (Left Nothing) ->
-      throw $ printf "the variable `%s` cannot be queried before it has a value" (show x)
+      throw . Exception_Misc $ printf "the variable `%s` cannot be queried before it has a value" (show x)
     Just (Right _) ->
-      throw $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+      throw . Exception_Misc $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
     Nothing ->
-      throw $ printf "the variable `%s` cannot be queried before its declaration" (show x)
+      throw . Exception_Misc $ printf "the variable `%s` cannot be queried before its declaration" (show x)
 
-queryVariable' :: Name -> Execution (Maybe (Maybe Value))
+queryVariable' :: Name -> Execution r (Maybe (Maybe Value))
 queryVariable' x =
   gets (^. namespace . at x) >>= \case
     Just (Left (Just val)) ->
@@ -327,39 +326,57 @@ queryVariable' x =
     Just (Left Nothing) ->
       return $ Just Nothing
     Just (Right _) ->
-      throw $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+      throw . Exception_Misc $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
     Nothing ->
       return Nothing
 
-queryFunction :: Name -> Execution Closure
+queryFunction :: Name -> Execution r Closure
 queryFunction f =
   gets (^. namespace . at f) >>= \case
     Just (Right (Just clo)) -> return clo
-    Just (Right Nothing) -> throw $ printf "the function `%s` cannot be queried before it has a value" (show f)
-    Just (Left _) -> throw $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
-    Nothing -> throw $ printf "the function `%s` cannot be queried before its declaration" (show f)
+    Just (Right Nothing) -> throw . Exception_Misc $ printf "the function `%s` cannot be queried before it has a value" (show f)
+    Just (Left _) -> throw . Exception_Misc $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+    Nothing -> throw . Exception_Misc $ printf "the function `%s` cannot be queried before its declaration" (show f)
 
-queryFunction' :: Name -> Execution (Maybe (Maybe Closure))
+queryFunction' :: Name -> Execution r (Maybe (Maybe Closure))
 queryFunction' f =
   gets (^. namespace . at f) >>= \case
     Just (Right (Just clo)) -> return $ Just (Just clo)
     Just (Right Nothing) -> return $ Just Nothing
-    Just (Left _) -> throw $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+    Just (Left _) -> throw . Exception_Misc $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
     Nothing -> return Nothing
 
 -- I/O
 
-writeOutput :: String -> Execution ()
+writeOutput :: String -> Execution r ()
 writeOutput s =
   modify $ outputs %~ (s :)
 
-readInput :: Execution (Maybe String)
+readInput :: Execution r (Maybe String)
 readInput =
   gets (^. inputs) >>= \case
     [] -> return Nothing
     s : inputs' -> do
       modify $ inputs .~ inputs'
       return $ Just s
+
+logOutputs ::
+  ( Member (Output Log) r,
+    Member (State Context) r
+  ) =>
+  Sem r ()
+logOutputs =
+  gets (^. outputs . to reverse) >>= \case
+    [] -> return ()
+    os -> log Tag_Output $ List.intercalate "\n" os
+
+resetOutputs ::
+  ( Member (Output Log) r,
+    Member (State Context) r
+  ) =>
+  Sem r ()
+resetOutputs =
+  modify $ outputs .~ mempty
 
 {-
 ## Utilities

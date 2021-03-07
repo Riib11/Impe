@@ -1,8 +1,31 @@
 module Language.Impe.Parsing where
 
+import Language.Impe.Excepting
 import Language.Impe.Grammar
 import Language.Impe.Lexing
+import Polysemy
+import Polysemy.Error (Error)
 import Text.ParserCombinators.Parsec
+
+{-
+# Parsing
+-}
+
+type Parsed r a = Member (Error Exception) r => Sem r a
+
+parseProgram :: String -> String -> Parsed r Program
+parseProgram = parsed program
+
+parseInstruction :: String -> String -> Parsed r Instruction
+parseInstruction = parsed instruction
+
+parseExpression :: String -> String -> Parsed r Expression
+parseExpression = parsed expression
+
+parsed :: Parser a -> String -> String -> Parsed r a
+parsed parser filename source = case runParser parser () filename source of
+  Left prsErr -> throw . Exception_Parsing $ prsErr
+  Right x -> return x
 
 {-
 ## Program

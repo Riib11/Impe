@@ -1,4 +1,4 @@
-module Main.Interactive.Lexing where
+module Main.Interacting.Lexing where
 
 import Control.Monad.Identity
 import Text.ParserCombinators.Parsec
@@ -42,7 +42,3 @@ parens = Token.parens tokenParser
 commaSep = Token.commaSep tokenParser
 
 symbol = Token.symbol tokenParser
-
---
-
-command_start = symbol ":"
