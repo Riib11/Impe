@@ -101,14 +101,14 @@ emptyContext =
 executeProgram :: Program -> Execution r ()
 executeProgram = \case
   Program insts -> do
-    log Tag_InfoInline "execute program"
+    log Tag_Debug "execute program"
     executePrelude
     mapM_ executeInstruction insts
     executeMain
 
 executePrelude :: Execution r ()
 executePrelude = do
-  log Tag_InfoInline "execute prelude"
+  log Tag_Debug "execute prelude"
   mapM_
     ( \(x, _) ->
         do
@@ -127,7 +127,7 @@ executeMain :: Execution r ()
 executeMain = do
   queryFunction' mainName >>= \case
     Just (Just (([], _), _)) -> do
-      log Tag_InfoInline "execute main"
+      log Tag_Debug "execute main"
       void $ executeInstruction (ProcedureCall mainName [])
     Just (Just ((_, _), _)) ->
       throw . Exception_Misc $ "the main function must take 0 arguments" -- type prohibited
@@ -144,42 +144,42 @@ executeMain = do
 executeInstruction :: Instruction -> Execution r (Maybe Value)
 executeInstruction inst_ = case inst_ of
   Block insts -> subScope do
-    log Tag_InfoInline "execute block start"
+    log Tag_Debug "execute block start"
     mb_v <- foldl (<|>) Nothing <$> traverse executeInstruction insts
-    log Tag_InfoInline "execute block end"
+    log Tag_Debug "execute block end"
     return mb_v
   Declaration x _ -> do
-    log Tag_InfoInline $ printf "execute declaration: %s" (show inst_)
+    log Tag_Debug $ printf "execute declaration: %s" (show inst_)
     declareVariable x
     return Nothing
   Assignment x e -> do
-    log Tag_InfoInline $ printf "execute assignment: %s" (show inst_)
+    log Tag_Debug $ printf "execute assignment: %s" (show inst_)
     queryVariable' x >>= \case
       Just _ -> updateVariable x =<< evaluateExpression e
       Nothing -> throw . Exception_Misc $ printf "the variable `%s` cannot be updated before its declaration" (show x)
     return Nothing
   Function f params _ inst -> do
-    log Tag_InfoInline $ printf "execute function definition: %s" (show inst_)
+    log Tag_Debug $ printf "execute function definition: %s" (show inst_)
     declareFunction f
     updateFunction f (fst <$> params, inst)
     return Nothing
   Conditional e inst1 inst2 -> do
-    log Tag_InfoInline $ printf "execute conditional: %s" (show inst_)
+    log Tag_Debug $ printf "execute conditional: %s" (show inst_)
     evaluateExpression e >>= \case
       Bool True -> subScope $ executeInstruction inst1
       Bool False -> subScope $ executeInstruction inst2
       _ -> throw . Exception_Misc $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Loop e inst -> do
-    log Tag_InfoInline $ printf "execute loop: %s" (show inst_)
+    log Tag_Debug $ printf "execute loop: %s" (show inst_)
     evaluateExpression e >>= \case
       Bool True -> subScope $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
       _ -> throw . Exception_Misc $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
   Return e -> do
-    log Tag_InfoInline $ printf "execute return: %s" (show inst_)
+    log Tag_Debug $ printf "execute return: %s" (show inst_)
     Just <$> evaluateExpression e
   ProcedureCall f args -> do
-    log Tag_InfoInline $ printf "execute procedure call: %s" (show inst_)
+    log Tag_Debug $ printf "execute procedure call: %s" (show inst_)
     ((xs, inst), scp) <- queryFunction f
     -- evaluate arguments in outer scope
     vs <- mapM evaluateExpression args
@@ -195,7 +195,7 @@ executeInstruction inst_ = case inst_ of
 
 executePrimitiveFunctionBody :: Name -> [Name] -> Execution r (Maybe Value)
 executePrimitiveFunctionBody f xs = do
-  log Tag_InfoInline $ printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
+  log Tag_Debug $ printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
   args <- mapM queryVariable xs
   case (f, args) of
     (Name "&&", [Bool p, Bool q]) ->
@@ -222,7 +222,7 @@ executePrimitiveFunctionBody f xs = do
 
 evaluateInstruction :: Instruction -> Execution r Value
 evaluateInstruction inst = do
-  log Tag_InfoInline $ printf "evaluate instruction: %s" (show inst)
+  log Tag_Debug $ printf "evaluate instruction: %s" (show inst)
   executeInstruction inst >>= \case
     Just v -> return v
     Nothing -> throw . Exception_Misc $ printf "expected instruction `%s` to return a value." (show inst)
@@ -230,10 +230,10 @@ evaluateInstruction inst = do
 evaluateExpression :: Expression -> Execution r Value
 evaluateExpression e_ = case e_ of
   Reference x -> do
-    log Tag_InfoInline $ printf "evaluate reference: %s" (show e_)
+    log Tag_Debug $ printf "evaluate reference: %s" (show e_)
     queryVariable x
   Application f args -> do
-    log Tag_InfoInline $ printf "evaluate application: %s" (show e_)
+    log Tag_Debug $ printf "evaluate application: %s" (show e_)
     ((xs, inst), scp) <- queryFunction f
     -- evaluate arguments in outer scope
     vs <- mapM evaluateExpression args
@@ -251,20 +251,20 @@ evaluateExpression e_ = case e_ of
 
 subScope :: Execution r a -> Execution r a
 subScope exe = do
-  log Tag_InfoInline $ "entering local scope"
+  log Tag_Debug $ "entering local scope"
   modify $ namespace %~ enterScope -- enter local scope
   a <- exe
-  log Tag_InfoInline $ "leaving local scope"
+  log Tag_Debug $ "leaving local scope"
   modify $ namespace %~ leaveScope -- leave local scope
   return a
 
 withScope :: Scope Name -> Execution r a -> Execution r a
 withScope scp exe = do
-  log Tag_InfoInline $ printf "entering scope: %s" (show scp)
+  log Tag_Debug $ printf "entering scope: %s" (show scp)
   scpOri <- gets (^. namespace . scope)
   modify $ namespace . scope .~ scp -- adopt new scope
   a <- exe
-  log Tag_InfoInline $ printf "leaving scope: %s" (show scp)
+  log Tag_Debug $ printf "leaving scope: %s" (show scp)
   modify $ namespace . scope .~ scpOri -- resert original scope
   return a
 

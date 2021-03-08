@@ -61,9 +61,9 @@ interactStep = do
     hFlush stdout
   src <- embed getLine
   -- parse command
-  log Tag_InfoInline $ "parsing command"
+  log Tag_Debug $ "parsing command"
   cmd <- parseCommand src
-  log Tag_InfoInline $ printf "parsed command: %s" (show cmd)
+  log Tag_Debug $ printf "parsed command: %s" (show cmd)
   -- handle command
   parseCommand src >>= \case
     Command_Instruction inst -> do

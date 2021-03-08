@@ -75,14 +75,14 @@ emptyContext =
 typecheckProgram :: Program -> Typecheck r ()
 typecheckProgram = \case
   Program insts -> do
-    log Tag_InfoInline "typecheck program"
+    log Tag_Debug "typecheck program"
     typecheckPrelude
     mapM_ (flip typecheckInstruction VoidType) insts
     typecheckMain
 
 typecheckPrelude :: Typecheck r ()
 typecheckPrelude = do
-  log Tag_InfoInline "typecheck prelude"
+  log Tag_Debug "typecheck prelude"
   mapM_
     (\(x, t) -> setType x t)
     primitive_variables
@@ -92,7 +92,7 @@ typecheckPrelude = do
 
 typecheckMain :: Typecheck r ()
 typecheckMain = do
-  log Tag_InfoInline "typecheck main"
+  log Tag_Debug "typecheck main"
   gets (^. namespace . at mainName) >>= \case
     Just (FunctionType [] VoidType) -> return ()
     Just (FunctionType _ VoidType) -> throw . Exception_Misc $ printf "the function `main` cannot have any arguments"
@@ -106,13 +106,13 @@ typecheckMain = do
 
 typecheckInstruction :: Instruction -> Type -> Typecheck r ()
 typecheckInstruction inst t = do
-  log Tag_InfoInline "typecheck instruction"
+  log Tag_Debug "typecheck instruction"
   t' <- synthesizeInstruction inst
   void $ typecheckTypes t t'
 
 typecheckExpression :: Expression -> Type -> Typecheck r ()
 typecheckExpression e t = do
-  log Tag_InfoInline "typecheck expression"
+  log Tag_Debug "typecheck expression"
   t' <- synthesizeExpression e
   void $ typecheckTypes t t'
 
@@ -122,7 +122,7 @@ typecheckExpression e t = do
 
 synthesizeInstruction :: Instruction -> Typecheck r Type
 synthesizeInstruction inst = do
-  log Tag_InfoInline "synthesize instruction"
+  log Tag_Debug "synthesize instruction"
   synthesizeInstructionStep inst >>= \case
     Just t -> return t
     Nothing -> return VoidType
@@ -130,43 +130,43 @@ synthesizeInstruction inst = do
 synthesizeInstructionStep :: Instruction -> Typecheck r (Maybe Type)
 synthesizeInstructionStep inst_ = case inst_ of
   Block insts -> subScope do
-    log Tag_InfoInline "synthesize block"
+    log Tag_Debug "synthesize block"
     ts <- mapM synthesizeInstructionStep insts
     foldM typecheckIntermediateTypes Nothing ts
   Declaration x t -> do
-    log Tag_InfoInline $ printf "synthesize declaration: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize declaration: %s" (show inst_)
     when (t == VoidType) $
       throw . Exception_Misc $ printf "cannot declare variable `%s` to be of type `void`"
     setType x t
     return Nothing
   Assignment x e -> do
-    log Tag_InfoInline $ printf "synthesize assignment: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize assignment: %s" (show inst_)
     t <- getType x
     t' <- synthesizeExpression e
     void $ typecheckTypes t t'
     return Nothing
   Function f prms t inst -> do
-    log Tag_InfoInline $ printf "synthesize function: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize function: %s" (show inst_)
     setType f $ FunctionType (snd <$> prms) t
     subScope do
       mapM_ (\(x, s) -> setType x s) prms
       typecheckInstruction inst t
     return Nothing
   Conditional e inst1 inst2 -> do
-    log Tag_InfoInline $ printf "synthesize conditional: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize conditional: %s" (show inst_)
     typecheckExpression e BoolType
     mbt1 <- subScope $ synthesizeInstructionStep inst1
     mbt2 <- subScope $ synthesizeInstructionStep inst2
     typecheckIntermediateTypes mbt1 mbt2
   Loop e inst -> do
-    log Tag_InfoInline $ printf "synthesize loop: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize loop: %s" (show inst_)
     typecheckExpression e BoolType
     subScope $ synthesizeInstructionStep inst
   Return e -> do
-    log Tag_InfoInline $ printf "synthesize return: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize return: %s" (show inst_)
     Just <$> synthesizeExpression e
   ProcedureCall f es -> do
-    log Tag_InfoInline $ printf "synthesize procedure call: %s" (show inst_)
+    log Tag_Debug $ printf "synthesize procedure call: %s" (show inst_)
     getType f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
@@ -181,19 +181,19 @@ synthesizeInstructionStep inst_ = case inst_ of
 synthesizeExpression :: Expression -> Typecheck r Type
 synthesizeExpression e_ = case e_ of
   Unit -> do
-    log Tag_InfoInline $ printf "synthesize unit: %s" (show e_)
+    log Tag_Debug $ printf "synthesize unit: %s" (show e_)
     return UnitType
   Bool _ -> do
-    log Tag_InfoInline $ printf "synthesize bool: %s" (show e_)
+    log Tag_Debug $ printf "synthesize bool: %s" (show e_)
     return BoolType
   Int _ -> do
-    log Tag_InfoInline $ printf "synthesize int: %s" (show e_)
+    log Tag_Debug $ printf "synthesize int: %s" (show e_)
     return IntType
   Reference x -> do
-    log Tag_InfoInline $ printf "synthesize reference: %s" (show e_)
+    log Tag_Debug $ printf "synthesize reference: %s" (show e_)
     getType x
   Application f es -> do
-    log Tag_InfoInline $ printf "synthesize application: %s" (show e_)
+    log Tag_Debug $ printf "synthesize application: %s" (show e_)
     getType f >>= \case
       FunctionType ss t -> do
         unless (length es == length ss) $
@@ -208,7 +208,7 @@ synthesizeExpression e_ = case e_ of
 
 typecheckIntermediateTypes :: Maybe Type -> Maybe Type -> Typecheck r (Maybe Type)
 typecheckIntermediateTypes mb_t1 mb_t2 = do
-  log Tag_InfoInline $ printf "typecheck intermediate types: %s ~ %s" (show mb_t1) (show mb_t2)
+  log Tag_Debug $ printf "typecheck intermediate types: %s ~ %s" (show mb_t1) (show mb_t2)
   case (mb_t1, mb_t2) of
     (Nothing, Nothing) -> return Nothing
     (Nothing, Just t) -> return $ Just t
@@ -217,7 +217,7 @@ typecheckIntermediateTypes mb_t1 mb_t2 = do
 
 typecheckTypes :: Type -> Type -> Typecheck r Type
 typecheckTypes s t = do
-  log Tag_InfoInline $ printf "typecheck types: %s ~ %s" (show s) (show t)
+  log Tag_Debug $ printf "typecheck types: %s ~ %s" (show s) (show t)
   if s == t
     then return s
     else throw . Exception_Misc $ printf "cannot unify type\n\n  %s\n\nwith type\n\n  %s\n" (show s) (show t)
@@ -228,10 +228,10 @@ typecheckTypes s t = do
 
 subScope :: Typecheck r a -> Typecheck r a
 subScope c = do
-  log Tag_InfoInline $ printf "entering local scope"
+  log Tag_Debug $ printf "entering local scope"
   modify $ namespace %~ enterScope
   a <- c
-  log Tag_InfoInline $ printf "leaving local scope"
+  log Tag_Debug $ printf "leaving local scope"
   modify $ namespace %~ leaveScope
   return a
 

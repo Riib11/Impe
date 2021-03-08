@@ -1,5 +1,8 @@
 module Main.Config.Parsing (parseConfig) where
 
+import qualified Data.Char
+import qualified Data.Char as Char
+import Data.Map ((!), (!?))
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
 import Language.Impe.Logging
@@ -8,6 +11,7 @@ import Options.Applicative
 import qualified Paths_impe
 import Polysemy
 import Polysemy.Embed
+import Text.Printf (printf)
 
 {-
 # Parsing
@@ -44,15 +48,25 @@ version =
 
 verbosity :: Parser Grammar.Verbosity
 verbosity = do
-  vrb <-
-    strOption
-      ( metavar "VERBOSITY"
-          <> short 'v'
-          <> value ""
-          <> help "verbosity levels: TODO"
-      ) ::
-      Parser String
-  return $ Grammar.Verbosity [Tag_Output]
+  option
+    parseVerbosity
+    ( metavar "VERBOSITY"
+        <> short 'v'
+        <> long "verbosity"
+        <> value (Grammar.verbosities ! "normal")
+        <> help "verbosity modes: debug, normal, quiet, silent, arrogant"
+    ) ::
+    Parser Grammar.Verbosity
+
+parseVerbosity :: ReadM Grammar.Verbosity
+parseVerbosity =
+  eitherReader $
+    ( \s ->
+        case Grammar.verbosities !? s of
+          Just vrb -> return vrb
+          Nothing -> Left $ printf "Unrecognized verbosity `%s'" s
+    )
+      . Prelude.filter (not . Char.isSpace)
 
 source_filename :: Parser (Maybe String)
 source_filename =

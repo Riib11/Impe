@@ -40,12 +40,13 @@ This project demonstrates the following tools:
 
 ## To Do
 
-- [ ] organize effects by newtype-wrapping logs and errors
-- [ ] abstract away interpreting programs/instruction/expression somehow
-- [ ] Main.Config module for grammar/parsing of command-line options
-- [ ] redefine synonyms to use `Member <effect> r => Sem r <type>` rather than
+- [x] parse config of verbosity
+- [x] customize verbosity of logs throughout program
+- [x] organize effects by newtype-wrapping logs and errors
+- [x] abstract away interpreting programs/instruction/expression somehow
+- [x] Main.Config module for grammar/parsing of command-line options
+- [x] redefine synonyms to use `Member <effect> r => Sem r <type>` rather than
       explicitly defining a list of effects
-
 - [x] error on duplicate names in same scope (requires using nested scoping in
       typechecking, so probably would be a good idea to just make a general data
       structure to use for both).
