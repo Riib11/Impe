@@ -37,6 +37,7 @@ data Context = Context
 data Entry
   = EntryValue (Maybe Value)
   | EntryClosure (Maybe Closure)
+  | EntryPrimitiveFunction
 
 type Execution r a =
   ( Member (State Context) r,
@@ -79,14 +80,14 @@ instance Show Context where
           Just val ->
             printf "    variable %s#%s = %s" (show x) (show i) (show val)
           Nothing ->
-            printf "    variable %s undefined" (show x)
+            printf "    variable %s uninitialized" (show x)
         EntryClosure mb_clo -> case mb_clo of
-          Just ((_, PrimitiveFunctionBody f xs), _) ->
-            printf "    function %s(%s) is primitive" (show f) (showArgsNames xs)
           Just ((xs, inst), _) ->
             printf "    function %s(%s) = %s" (show x) (showArgsNames xs) (show inst)
           Nothing ->
-            printf "    fun %s undefined" (show x)
+            printf "    function %s uninitialized" (show x)
+        EntryPrimitiveFunction ->
+          printf "    function %s primitive" (show x)
 
 {-
 ### Interface
@@ -115,18 +116,17 @@ executeProgram = \case
 executePrelude :: Execution r ()
 executePrelude = do
   log Tag_Debug "execute prelude"
+  -- primitive variables
   mapM_
-    ( \(x, _) ->
+    ( \(x, _, e) ->
         do
           declareVariable x
-          updateVariable x undefined -- TODO
+          updateVariable x =<< evaluateExpression e
     )
     primitive_variables
+  -- primitive functions
   mapM_
-    ( \(f, params, _) -> do
-        declareFunction f
-        updateFunction f (fst <$> params, PrimitiveFunctionBody f (fst <$> params))
-    )
+    (\(f, _, _) -> declarePrimitiveFunction f)
     primitive_functions
 
 executeMain :: Execution r ()
@@ -170,49 +170,66 @@ executeInstruction inst_ = case inst_ of
   Loop e inst -> do
     log Tag_Debug $ printf "execute loop: %s" (show inst_)
     evaluateExpression e >>= \case
-      Bool True -> subScope $ executeInstruction $ Loop e inst
-      Bool False -> return Nothing
+      Bool True -> do
+        log Tag_Debug $ printf "evaluate loop condition to true: %s" (show e)
+        executeInstruction inst >>= \case
+          Just v -> do
+            log Tag_Debug $ printf "execute loop iteration to return value: %s" (show v)
+            return $ Just v
+          Nothing ->
+            subScope $ executeInstruction $ Loop e inst
+      Bool False -> do
+        log Tag_Debug $ printf "evaluate loop condition to false: %s" (show e)
+        return Nothing
       v -> throw $ Excepting.ValueMaltyped e BoolType v
   Return e -> do
     log Tag_Debug $ printf "execute return: %s" (show inst_)
     Just <$> evaluateExpression e
   ProcedureCall f args -> do
     log Tag_Debug $ printf "execute procedure call: %s" (show inst_)
-    ((xs, inst), scp) <- queryFunction f
-    -- evaluate arguments in outer scope
-    vs <- mapM evaluateExpression args
-    withScope scp do
-      -- declare argument bindings in inner scope
-      mapM_
-        (\(x, v) -> do declareVariable x; updateVariable x v)
-        (zip xs vs)
-      void $ executeInstruction inst
-      return Nothing
-  PrimitiveFunctionBody f xs ->
-    executePrimitiveFunctionBody f xs
+    queryFunction f >>= \case
+      -- closure
+      Left ((params, inst), scp) -> do
+        -- evaluate arguments in outer scope
+        args' <- mapM evaluateExpression args
+        withScope scp do
+          -- declare argument bindings in inner scope
+          mapM_
+            (\(x, v) -> do declareVariable x; updateVariable x v)
+            (zip params args')
+          void $ executeInstruction inst
+          return Nothing
+      -- primitive function
+      Right pf -> do
+        -- evaluate arguments in outer scope
+        args' <- mapM evaluateExpression args
+        -- hand-off to execute primitive function
+        executePrimitiveFunction pf args'
 
-executePrimitiveFunctionBody :: Name -> [Name] -> Execution r (Maybe Value)
-executePrimitiveFunctionBody f xs = do
-  log Tag_Debug $
-    printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
-  args <- mapM queryVariable xs
+executePrimitiveFunction :: Name -> [Expression] -> Execution r (Maybe Value)
+executePrimitiveFunction f args = do
+  log Tag_Debug $ printf "execute primitive function: %s(%s)" (show f) (showArgs args)
   case (f, args) of
-    (Name "&&", [Bool p, Bool q]) ->
-      return . Just $ Bool (p && q)
-    (Name "||", [Bool p, Bool q]) ->
-      return . Just $ Bool (p || q)
-    (Name "+", [Int x, Int y]) ->
-      return . Just $ Int (x + y)
-    (Name "-", [Int x, Int y]) ->
-      return . Just $ Int (x - y)
-    (Name "*", [Int x, Int y]) ->
-      return . Just $ Int (x * y)
+    -- bool
+    (Name "&&", [Bool p, Bool q]) -> return . Just $ Bool (p && q)
+    (Name "||", [Bool p, Bool q]) -> return . Just $ Bool (p || q)
     (Name "output_bool", [Bool v]) -> do
       writeOutput (if v then "true" else "false")
       return Nothing
-    (Name "output_int", [Int v]) -> do
-      writeOutput (show v)
-      return Nothing
+    -- int
+    (Name "+", [Int x, Int y]) -> return . Just $ Int (x + y)
+    (Name "-", [Int x, Int y]) -> return . Just $ Int (x - y)
+    (Name "*", [Int x, Int y]) -> return . Just $ Int (x * y)
+    (Name "^", [Int x, Int y]) -> return . Just $ Int (x ^ y)
+    (Name "=", [Int x, Int y]) -> return . Just $ Bool (x == y)
+    (Name ">", [Int x, Int y]) -> return . Just $ Bool (x > y)
+    (Name ">=", [Int x, Int y]) -> return . Just $ Bool (x >= y)
+    (Name "<", [Int x, Int y]) -> return . Just $ Bool (x < y)
+    (Name "<=", [Int x, Int y]) -> return . Just $ Bool (x <= y)
+    (Name "output_int", [Int v]) -> writeOutput (show v) >> return Nothing
+    -- string
+    (Name "<>", [String a, String b]) -> return . Just $ String (a <> b)
+    (Name "output_string", [String a]) -> writeOutput a >> return Nothing
     _ ->
       throw $ Excepting.UninterpretedPrimitiveFunction f args
 
@@ -234,13 +251,23 @@ evaluateExpression e_ = case e_ of
     queryVariable x
   Application f args -> do
     log Tag_Debug $ printf "evaluate application: %s" (show e_)
-    ((xs, inst), scp) <- queryFunction f
-    -- evaluate arguments in outer scope
-    vs <- mapM evaluateExpression args
-    withScope scp do
-      -- declare argument bindings in inner scope
-      mapM_ (\(x, v) -> do declareVariable x; updateVariable x v) (zip xs vs)
-      evaluateInstruction inst
+    queryFunction f >>= \case
+      -- constructed function
+      Left ((xs, inst), scp) -> do
+        -- evaluate arguments in outer scope
+        args' <- mapM evaluateExpression args
+        withScope scp do
+          -- declare argument bindings in inner scope
+          mapM_ (\(x, v) -> do declareVariable x; updateVariable x v) (zip xs args')
+          evaluateInstruction inst
+      -- primitive function
+      Right pf -> do
+        -- evaluate arguments in outer scope
+        args' <- mapM evaluateExpression args
+        -- hand-off to execute primitive function
+        executePrimitiveFunction pf args' >>= \case
+          Just v -> return v
+          Nothing -> throw $ Excepting.ExpressionNoValue e_
   v -> return v
 
 {-
@@ -278,6 +305,10 @@ declareFunction :: Name -> Execution r ()
 declareFunction f =
   modify $ namespace %~ initialize f (EntryClosure Nothing)
 
+declarePrimitiveFunction :: Name -> Execution r ()
+declarePrimitiveFunction f =
+  modify $ namespace %~ initialize f EntryPrimitiveFunction
+
 -- update
 
 updateVariable :: Name -> Value -> Execution r ()
@@ -286,6 +317,8 @@ updateVariable x val =
     Just (EntryValue _) ->
       modify $ namespace . at x .~ Just ((EntryValue . Just) val)
     Just (EntryClosure _) ->
+      throw $ Excepting.VariableNo x
+    Just EntryPrimitiveFunction ->
       throw $ Excepting.VariableNo x
     Nothing ->
       modify $ namespace . at x .~ Just ((EntryValue . Just) val)
@@ -297,6 +330,8 @@ updateFunction f bnd =
       scp <- gets (^. namespace . scope)
       modify $ namespace . at f .~ Just ((EntryClosure . Just) (bnd, scp))
     Just (EntryValue _) ->
+      throw $ Excepting.FunctionNo f
+    Just EntryPrimitiveFunction ->
       throw $ Excepting.FunctionNo f
     Nothing -> do
       scp <- gets (^. namespace . scope)
@@ -313,6 +348,8 @@ queryVariable x =
       throw $ Excepting.VariableUninitializedMention x
     Just (EntryClosure _) ->
       throw $ Excepting.VariableNo x
+    Just EntryPrimitiveFunction ->
+      throw $ Excepting.VariableNo x
     Nothing ->
       throw $ Excepting.VariableUndeclaredMention x
 
@@ -325,23 +362,29 @@ queryVariable' x =
       return $ Just Nothing
     Just (EntryClosure _) ->
       throw $ Excepting.VariableNo x
+    Just EntryPrimitiveFunction ->
+      throw $ Excepting.VariableNo x
     Nothing ->
       return Nothing
 
-queryFunction :: Name -> Execution r Closure
+-- closure or primitive function name
+queryFunction :: Name -> Execution r (Either Closure Name)
 queryFunction f =
   gets (^. namespace . at f) >>= \case
-    Just (EntryClosure (Just clo)) -> return clo
+    Just (EntryClosure (Just clo)) -> return $ Left clo
     Just (EntryClosure Nothing) -> throw $ Excepting.FunctionUninitializedMention f
     Just (EntryValue _) -> throw $ Excepting.FunctionNo f
+    Just EntryPrimitiveFunction -> return $ Right f
     Nothing -> throw $ Excepting.FunctionUninitializedMention f
 
-queryFunction' :: Name -> Execution r (Maybe (Maybe Closure))
+-- maybe closure or primitive function name
+queryFunction' :: Name -> Execution r (Maybe (Either (Maybe Closure) Name))
 queryFunction' f =
   gets (^. namespace . at f) >>= \case
-    Just (EntryClosure (Just clo)) -> return $ Just (Just clo)
-    Just (EntryClosure Nothing) -> return $ Just Nothing
+    Just (EntryClosure (Just clo)) -> return . Just . Left . Just $ clo
+    Just (EntryClosure Nothing) -> return . Just . Left $ Nothing
     Just (EntryValue _) -> throw $ Excepting.FunctionNo f
+    Just EntryPrimitiveFunction -> return . Just . Right $ f
     Nothing -> return Nothing
 
 -- I/O

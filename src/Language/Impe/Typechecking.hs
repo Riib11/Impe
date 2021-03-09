@@ -84,10 +84,10 @@ typecheckPrelude :: Typecheck r ()
 typecheckPrelude = do
   log Tag_Debug "typecheck prelude"
   mapM_
-    (\(x, t) -> setType x t)
+    (\(x, t, _) -> setType x t)
     primitive_variables
   mapM_
-    (\(f, prms, t) -> setType f $ FunctionType (snd <$> prms) t)
+    (\(f, ss, t) -> setType f $ FunctionType ss t)
     primitive_functions
 
 typecheckMain :: Typecheck r ()
@@ -173,8 +173,6 @@ synthesizeInstructionStep inst_ = case inst_ of
       fType ->
         throw $ Excepting.ApplicationNonfunction f fType args
     return Nothing
-  PrimitiveFunctionBody f args ->
-    throw $ Excepting.PrimitiveFunctionBody f args
 
 synthesizeExpression :: Expression -> Typecheck r Type
 synthesizeExpression e_ = case e_ of

@@ -1,25 +1,33 @@
 module Language.Impe.Primitive where
 
-import Control.Lens
 import Language.Impe.Grammar
 
-primitive_variables :: [(Name, Type)]
+primitive_variables :: [(Name, Type, Expression)]
 primitive_variables =
   []
 
-primitive_functions :: [(Name, [(Name, Type)], Type)]
+primitive_functions :: [(Name, [Type], Type)]
 primitive_functions =
-  -- make
-  --   <$> [("output_int", [("v", IntType)], VoidType)]
   make
-    <$> [ ("&&", [("p", BoolType), ("q", BoolType)], BoolType),
-          ("||", [("p", BoolType), ("q", BoolType)], BoolType),
-          ("+", [("x", IntType), ("y", IntType)], IntType),
-          ("-", [("x", IntType), ("y", IntType)], IntType),
-          ("*", [("x", IntType), ("y", IntType)], IntType),
-          ("output_bool", [("v", BoolType)], VoidType),
-          ("output_int", [("v", IntType)], VoidType)
+    <$> [ -- bool
+          ("&&", [BoolType, BoolType], BoolType),
+          ("||", [BoolType, BoolType], BoolType),
+          ("output_bool", [BoolType], VoidType),
+          -- int
+          ("+", [IntType, IntType], IntType),
+          ("-", [IntType, IntType], IntType),
+          ("*", [IntType, IntType], IntType),
+          ("^", [IntType, IntType], IntType),
+          ("=", [IntType, IntType], BoolType),
+          (">", [IntType, IntType], BoolType),
+          (">=", [IntType, IntType], BoolType),
+          ("<", [IntType, IntType], BoolType),
+          ("<=", [IntType, IntType], BoolType),
+          ("output_int", [IntType], VoidType),
+          -- string
+          ("<>", [StringType, StringType], VoidType),
+          ("output_string", [StringType], VoidType)
         ]
   where
-    make :: (String, [(String, Type)], Type) -> (Name, [(Name, Type)], Type)
-    make (f, params, t) = (Name f, (_1 %~ Name) <$> params, t)
+    make :: (String, [Type], Type) -> (Name, [Type], Type)
+    make (f, xs, t) = (Name f, xs, t)
