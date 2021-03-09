@@ -108,6 +108,7 @@ startInteract = do
         interpretProgram fn src
         -- log outputs
         Executing.logOutputs
+        Executing.resetOutputs
         -- start interact loop
         log Tag_Output "[impe - interact] start"
         interact
