@@ -49,24 +49,10 @@ integer = Token.integer tokenParser
 
 natural = Token.natural tokenParser
 
+stringLiteral = Token.stringLiteral tokenParser
+
 --
 
 eq = symbol "="
 
 arrow = symbol "->"
-
--- impeGenLanguageDef :: GenLanguageDef LexStream LexState LexMonad
--- impeGenLanguageDef =
---   LanguageDef
---     { commentStart = "/*",
---       commentEnd = "*/",
---       commentLine = "//",
---       nestedComments = False,
---       identStart = ParsecT LexStream LexState LexMonad Char,
---       identLetter = ParsecT LexStream LexState LexMonad Char,
---       opStart = ParsecT LexStream LexState LexMonad Char,
---       opLetter = ParsecT LexStream LexState LexMonad Char,
---       reservedNames = [String],
---       reservedOpNames = [String],
---       caseSensitive = Bool
---     }

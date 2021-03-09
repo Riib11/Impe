@@ -41,8 +41,10 @@ This project demonstrates the following tools:
 
 ## To Do
 
-- [ ] error(exception) and warning codes (as ADTs)
+- [ ] better organization for executing and parsing primitive functions and
+      variables
 
+- [x] error(exception) and warning codes (as ADTs)
 - [x] parse config of verbosity
 - [x] customize verbosity of logs throughout program
 - [x] organize effects by newtype-wrapping logs and errors

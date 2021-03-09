@@ -29,10 +29,14 @@ TODO: description
 -}
 
 data Context = Context
-  { _namespace :: Namespace Name (Either (Maybe Value) (Maybe Closure)),
+  { _namespace :: Namespace Name Entry,
     _inputs :: [String],
     _outputs :: [String]
   }
+
+data Entry
+  = EntryValue (Maybe Value)
+  | EntryClosure (Maybe Closure)
 
 type Execution r a =
   ( Member (State Context) r,
@@ -60,23 +64,7 @@ instance Show Context where
         "",
         "  store:",
         List.intercalate "\n"
-          . map
-            ( \((x, i), e) -> case e of
-                Left mb_val -> case mb_val of
-                  Just val ->
-                    printf "    var %s#%s = %s" (show x) (show i) (show val)
-                  Nothing ->
-                    printf "    var %s undefined" (show x)
-                Right mb_clo -> case mb_clo of
-                  Just ((xs, inst), _) ->
-                    printf
-                      "    fun %s(%s) = %s"
-                      (show x)
-                      (List.intercalate ", " . map show $ xs)
-                      (show inst)
-                  Nothing ->
-                    printf "    fun %s undefined" (show x)
-            )
+          . map showEntry
           $ ctx ^. namespace . store . to Map.toList,
         "",
         "inputs:",
@@ -85,6 +73,20 @@ instance Show Context where
         "outputs:",
         "    " ++ ctx ^. outputs . to (List.intercalate "\n    ")
       ]
+    where
+      showEntry ((x, i), e) = case e of
+        EntryValue mb_val -> case mb_val of
+          Just val ->
+            printf "    variable %s#%s = %s" (show x) (show i) (show val)
+          Nothing ->
+            printf "    variable %s undefined" (show x)
+        EntryClosure mb_clo -> case mb_clo of
+          Just ((_, PrimitiveFunctionBody f xs), _) ->
+            printf "    function %s(%s) is primitive" (show f) (showArgsNames xs)
+          Just ((xs, inst), _) ->
+            printf "    function %s(%s) = %s" (show x) (showArgsNames xs) (show inst)
+          Nothing ->
+            printf "    fun %s undefined" (show x)
 
 {-
 ### Interface
@@ -270,48 +272,46 @@ withScope scp exe = do
 
 declareVariable :: Name -> Execution r ()
 declareVariable x =
-  -- modify $ namespace . at x .~ Just (Left Nothing)
-  modify $ namespace %~ initialize x (Left Nothing)
+  modify $ namespace %~ initialize x (EntryValue Nothing)
 
 declareFunction :: Name -> Execution r ()
 declareFunction f =
-  -- modify $ namespace . at f .~ Just (Right Nothing)
-  modify $ namespace %~ initialize f (Right Nothing)
+  modify $ namespace %~ initialize f (EntryClosure Nothing)
 
 -- update
 
 updateVariable :: Name -> Value -> Execution r ()
 updateVariable x val =
   gets (^. namespace . at x) >>= \case
-    Just (Left _) ->
-      modify $ namespace . at x .~ Just ((Left . Just) val)
-    Just (Right _) ->
+    Just (EntryValue _) ->
+      modify $ namespace . at x .~ Just ((EntryValue . Just) val)
+    Just (EntryClosure _) ->
       throw $ Excepting.VariableNo x
     Nothing ->
-      modify $ namespace . at x .~ Just ((Left . Just) val)
+      modify $ namespace . at x .~ Just ((EntryValue . Just) val)
 
 updateFunction :: Name -> Binding -> Execution r ()
 updateFunction f bnd =
   gets (^. namespace . at f) >>= \case
-    Just (Right _) -> do
+    Just (EntryClosure _) -> do
       scp <- gets (^. namespace . scope)
-      modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
-    Just (Left _) ->
+      modify $ namespace . at f .~ Just ((EntryClosure . Just) (bnd, scp))
+    Just (EntryValue _) ->
       throw $ Excepting.FunctionNo f
     Nothing -> do
       scp <- gets (^. namespace . scope)
-      modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
+      modify $ namespace . at f .~ Just ((EntryClosure . Just) (bnd, scp))
 
 -- query
 
 queryVariable :: Name -> Execution r Value
 queryVariable x =
   gets (^. namespace . at x) >>= \case
-    Just (Left (Just val)) ->
+    Just (EntryValue (Just val)) ->
       return val
-    Just (Left Nothing) ->
+    Just (EntryValue Nothing) ->
       throw $ Excepting.VariableUninitializedMention x
-    Just (Right _) ->
+    Just (EntryClosure _) ->
       throw $ Excepting.VariableNo x
     Nothing ->
       throw $ Excepting.VariableUndeclaredMention x
@@ -319,11 +319,11 @@ queryVariable x =
 queryVariable' :: Name -> Execution r (Maybe (Maybe Value))
 queryVariable' x =
   gets (^. namespace . at x) >>= \case
-    Just (Left (Just val)) ->
+    Just (EntryValue (Just val)) ->
       return $ Just (Just val)
-    Just (Left Nothing) ->
+    Just (EntryValue Nothing) ->
       return $ Just Nothing
-    Just (Right _) ->
+    Just (EntryClosure _) ->
       throw $ Excepting.VariableNo x
     Nothing ->
       return Nothing
@@ -331,17 +331,17 @@ queryVariable' x =
 queryFunction :: Name -> Execution r Closure
 queryFunction f =
   gets (^. namespace . at f) >>= \case
-    Just (Right (Just clo)) -> return clo
-    Just (Right Nothing) -> throw $ Excepting.FunctionUninitializedMention f
-    Just (Left _) -> throw $ Excepting.FunctionNo f
+    Just (EntryClosure (Just clo)) -> return clo
+    Just (EntryClosure Nothing) -> throw $ Excepting.FunctionUninitializedMention f
+    Just (EntryValue _) -> throw $ Excepting.FunctionNo f
     Nothing -> throw $ Excepting.FunctionUninitializedMention f
 
 queryFunction' :: Name -> Execution r (Maybe (Maybe Closure))
 queryFunction' f =
   gets (^. namespace . at f) >>= \case
-    Just (Right (Just clo)) -> return $ Just (Just clo)
-    Just (Right Nothing) -> return $ Just Nothing
-    Just (Left _) -> throw $ Excepting.FunctionNo f
+    Just (EntryClosure (Just clo)) -> return $ Just (Just clo)
+    Just (EntryClosure Nothing) -> return $ Just Nothing
+    Just (EntryValue _) -> throw $ Excepting.FunctionNo f
     Nothing -> return Nothing
 
 -- I/O

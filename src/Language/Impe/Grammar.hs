@@ -25,6 +25,7 @@ data Type
   | UnitType
   | IntType
   | BoolType
+  | StringType
   | FunctionType [Type] Type
   deriving (Eq)
 
@@ -35,6 +36,7 @@ data Expression
   = Unit
   | Bool Bool
   | Int Int
+  | String String
   | Reference Name
   | Application Name [Expression]
   deriving (Eq)
@@ -83,8 +85,8 @@ instance Show Instruction where
       printf "return %s;" (show e)
     ProcedureCall f args ->
       printf "%s(%s);" (show f) (showArgs args)
-    PrimitiveFunctionBody f args ->
-      printf "[primitive(%s)(%s)]" (show f) (showArgsNames args)
+    PrimitiveFunctionBody f xs ->
+      printf "[primitive(%s)(%s)]" (show f) (showArgsNames xs)
 
 instance Show Type where
   show = \case
@@ -92,6 +94,7 @@ instance Show Type where
     UnitType -> "unit"
     IntType -> "int"
     BoolType -> "bool"
+    StringType -> "string"
     FunctionType ss t -> printf "(%s) -> %s" (showArgsTypes ss) (show t)
 
 instance Show Expression where
@@ -99,6 +102,7 @@ instance Show Expression where
     Unit -> "unit"
     Bool b -> if b then "true" else "false"
     Int i -> show i
+    String s -> show s
     Reference x -> show x
     Application f args -> printf "%s(%s)" (show f) (showArgs args)
 

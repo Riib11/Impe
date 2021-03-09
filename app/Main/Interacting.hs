@@ -80,7 +80,7 @@ interactStep = do
       return True
     Command_Expression expr -> do
       -- interpret input
-      (t, v) <- interpretExpressionParsed expr
+      (v, t) <- interpretExpressionParsed expr
       -- handle outputs
       Executing.logOutputs
       Executing.resetOutputs

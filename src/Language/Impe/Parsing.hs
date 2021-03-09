@@ -5,7 +5,7 @@ import Language.Impe.Grammar
 import Language.Impe.Lexing
 import Polysemy
 import Polysemy.Error (Error)
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec hiding (string)
 
 {-
 # Parsing
@@ -141,6 +141,7 @@ type_ =
       unitType,
       intType,
       boolType,
+      stringType,
       functionType
     ]
 
@@ -156,17 +157,23 @@ unitType = do
   symbol "unit"
   return UnitType
 
+-- bool
+boolType :: Parser Type
+boolType = do
+  symbol "bool"
+  return BoolType
+
 -- int
 intType :: Parser Type
 intType = do
   symbol "int"
   return IntType
 
--- bool
-boolType :: Parser Type
-boolType = do
-  symbol "bool"
-  return BoolType
+-- string
+stringType :: Parser Type
+stringType = do
+  symbol "string"
+  return StringType
 
 -- (s, ...) -> t
 functionType :: Parser Type
@@ -186,6 +193,7 @@ expression =
     [ unit,
       bool,
       int,
+      string,
       application,
       reference,
       parens expression
@@ -209,6 +217,7 @@ bool =
         return $ Bool False
     ]
 
+-- [0-9]*
 int :: Parser Expression
 int = do
   i <-
@@ -216,6 +225,10 @@ int = do
       optional (char '-')
       natural
   return $ Int i
+
+-- "..."
+string :: Parser Expression
+string = String <$> stringLiteral
 
 -- x
 reference :: Parser Expression

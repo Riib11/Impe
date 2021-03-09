@@ -187,6 +187,9 @@ synthesizeExpression e_ = case e_ of
   Int _ -> do
     log Tag_Debug $ printf "synthesize int: %s" (show e_)
     return IntType
+  String _ -> do
+    log Tag_Debug $ printf "synthesize string: %s" (show e_)
+    return StringType
   Reference x -> do
     log Tag_Debug $ printf "synthesize reference: %s" (show e_)
     getType x
