@@ -1,7 +1,6 @@
 module Main.Interacting.Parsing where
 
--- import Control.Lens
-import Language.Impe.Excepting
+import Language.Impe.Excepting as Excepting
 import Language.Impe.Grammar
 import Language.Impe.Interpreting
 import Language.Impe.Logging
@@ -25,7 +24,7 @@ parseCommand = parsed command
 
 parsed :: Parser a -> String -> Parsed r a
 parsed parser source = case runParser parser () "stdin" source of
-  Left prsErr -> throw . Exception_Parsing $ prsErr
+  Left prsErr -> throw . Excepting.Parsing $ prsErr
   Right x -> return x
 
 {-

@@ -15,17 +15,17 @@ import Text.Printf
 -}
 
 data Exception
-  = Exception_Interpretation Language.Impe.Excepting.Exception
-  | Exception_Interaction Language.Impe.Excepting.Exception
-  | Exception_Config String
-  | Exception_Misc String
+  = Interpretation Language.Impe.Excepting.Exception
+  | Interaction Language.Impe.Excepting.Exception
+  | Config String
+  | Misc String
 
 instance Show Exception where
   show = \case
-    Exception_Interpretation exp -> show exp
-    Exception_Interaction exp -> show exp
-    Exception_Config msg -> printf "[exception] config\n%s" msg
-    Exception_Misc msg -> printf "[exception] miscellaneous\n%s" msg
+    Interpretation exp -> show exp
+    Interaction exp -> show exp
+    Config msg -> printf "[exception] config\n%s" msg
+    Misc msg -> printf "[exception] miscellaneous\n%s" msg
 
 {-
 ## Excepting computation

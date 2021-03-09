@@ -61,7 +61,7 @@ startInterpret = do
   fn <-
     asks source_filename >>= \case
       Just fn -> return fn
-      Nothing -> throw . Exception_Config $ "interpretation mode requires an input source file"
+      Nothing -> throw . Excepting.Config $ "interpretation mode requires an input source file"
   -- read source
   src <- embed $ readFile fn
   ( runError
@@ -76,7 +76,7 @@ startInterpret = do
         Executing.logOutputs
     )
     >>= \case
-      Left exp -> throw . Exception_Interpretation $ exp
+      Left exp -> throw . Excepting.Interpretation $ exp
       Right () -> return ()
 
 startInteract ::
@@ -111,7 +111,7 @@ startInteract = do
         interact
     )
     >>= \case
-      Left exp -> throw . Exception_Interaction $ exp
+      Left exp -> throw . Excepting.Interaction $ exp
       Right () -> return ()
 
 handleOutputLog ::

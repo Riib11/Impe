@@ -7,7 +7,7 @@ import qualified Data.List as List
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Namespace as Namespace
-import Language.Impe.Excepting as Excepting
+import qualified Language.Impe.Excepting as Excepting
 import Language.Impe.Grammar as Grammar
 import Language.Impe.Logging as Logging
 import Language.Impe.Primitive as Primitive
@@ -36,7 +36,7 @@ data Context = Context
 
 type Execution r a =
   ( Member (State Context) r,
-    Member (Error Exception) r,
+    Member (Error Excepting.Exception) r,
     Member (Output Log) r
   ) =>
   Sem r a
@@ -69,7 +69,11 @@ instance Show Context where
                     printf "    var %s undefined" (show x)
                 Right mb_clo -> case mb_clo of
                   Just ((xs, inst), _) ->
-                    printf "    fun %s(%s) = %s" (show x) (List.intercalate ", " . map show $ xs) (show inst)
+                    printf
+                      "    fun %s(%s) = %s"
+                      (show x)
+                      (List.intercalate ", " . map show $ xs)
+                      (show inst)
                   Nothing ->
                     printf "    fun %s undefined" (show x)
             )
@@ -124,18 +128,12 @@ executePrelude = do
     primitive_functions
 
 executeMain :: Execution r ()
-executeMain = do
+executeMain =
   queryFunction' mainName >>= \case
-    Just (Just (([], _), _)) -> do
+    Just _ -> do
       log Tag_Debug "execute main"
       void $ executeInstruction (ProcedureCall mainName [])
-    Just (Just ((_, _), _)) ->
-      throw . Exception_Misc $ "the main function must take 0 arguments" -- type prohibited
-    Just Nothing ->
-      throw . Exception_Misc $ "the main function was declared but not defined"
-    Nothing ->
-      return ()
-  return ()
+    Nothing -> return ()
 
 {-
 ## Execution
@@ -154,9 +152,7 @@ executeInstruction inst_ = case inst_ of
     return Nothing
   Assignment x e -> do
     log Tag_Debug $ printf "execute assignment: %s" (show inst_)
-    queryVariable' x >>= \case
-      Just _ -> updateVariable x =<< evaluateExpression e
-      Nothing -> throw . Exception_Misc $ printf "the variable `%s` cannot be updated before its declaration" (show x)
+    updateVariable x =<< evaluateExpression e
     return Nothing
   Function f params _ inst -> do
     log Tag_Debug $ printf "execute function definition: %s" (show inst_)
@@ -168,13 +164,13 @@ executeInstruction inst_ = case inst_ of
     evaluateExpression e >>= \case
       Bool True -> subScope $ executeInstruction inst1
       Bool False -> subScope $ executeInstruction inst2
-      _ -> throw . Exception_Misc $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
+      v -> throw $ Excepting.ValueMaltyped e BoolType v
   Loop e inst -> do
     log Tag_Debug $ printf "execute loop: %s" (show inst_)
     evaluateExpression e >>= \case
       Bool True -> subScope $ executeInstruction $ Loop e inst
       Bool False -> return Nothing
-      _ -> throw . Exception_Misc $ printf "the condition `%s` must be of type `%s`." (show e) (show BoolType)
+      v -> throw $ Excepting.ValueMaltyped e BoolType v
   Return e -> do
     log Tag_Debug $ printf "execute return: %s" (show inst_)
     Just <$> evaluateExpression e
@@ -195,7 +191,8 @@ executeInstruction inst_ = case inst_ of
 
 executePrimitiveFunctionBody :: Name -> [Name] -> Execution r (Maybe Value)
 executePrimitiveFunctionBody f xs = do
-  log Tag_Debug $ printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
+  log Tag_Debug $
+    printf "execute primitive function body: %s" (show $ PrimitiveFunctionBody f xs)
   args <- mapM queryVariable xs
   case (f, args) of
     (Name "&&", [Bool p, Bool q]) ->
@@ -214,7 +211,8 @@ executePrimitiveFunctionBody f xs = do
     (Name "output_int", [Int v]) -> do
       writeOutput (show v)
       return Nothing
-    _ -> throw . Exception_Misc $ printf "the primitive function `%s` was not recognized" (show f)
+    _ ->
+      throw $ Excepting.UninterpretedPrimitiveFunction f args
 
 {-
 ## Evaluation
@@ -225,7 +223,7 @@ evaluateInstruction inst = do
   log Tag_Debug $ printf "evaluate instruction: %s" (show inst)
   executeInstruction inst >>= \case
     Just v -> return v
-    Nothing -> throw . Exception_Misc $ printf "expected instruction `%s` to return a value." (show inst)
+    Nothing -> throw $ Excepting.InstructionNoReturn inst
 
 evaluateExpression :: Expression -> Execution r Value
 evaluateExpression e_ = case e_ of
@@ -288,7 +286,7 @@ updateVariable x val =
     Just (Left _) ->
       modify $ namespace . at x .~ Just ((Left . Just) val)
     Just (Right _) ->
-      throw . Exception_Misc $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+      throw $ Excepting.VariableNo x
     Nothing ->
       modify $ namespace . at x .~ Just ((Left . Just) val)
 
@@ -299,7 +297,7 @@ updateFunction f bnd =
       scp <- gets (^. namespace . scope)
       modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
     Just (Left _) ->
-      throw . Exception_Misc $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+      throw $ Excepting.FunctionNo f
     Nothing -> do
       scp <- gets (^. namespace . scope)
       modify $ namespace . at f .~ Just ((Right . Just) (bnd, scp))
@@ -312,11 +310,11 @@ queryVariable x =
     Just (Left (Just val)) ->
       return val
     Just (Left Nothing) ->
-      throw . Exception_Misc $ printf "the variable `%s` cannot be queried before it has a value" (show x)
+      throw $ Excepting.VariableUninitializedMention x
     Just (Right _) ->
-      throw . Exception_Misc $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+      throw $ Excepting.VariableNo x
     Nothing ->
-      throw . Exception_Misc $ printf "the variable `%s` cannot be queried before its declaration" (show x)
+      throw $ Excepting.VariableUndeclaredMention x
 
 queryVariable' :: Name -> Execution r (Maybe (Maybe Value))
 queryVariable' x =
@@ -326,7 +324,7 @@ queryVariable' x =
     Just (Left Nothing) ->
       return $ Just Nothing
     Just (Right _) ->
-      throw . Exception_Misc $ printf "expected `%s` to be a variable, but it is actually a function" (show x)
+      throw $ Excepting.VariableNo x
     Nothing ->
       return Nothing
 
@@ -334,16 +332,16 @@ queryFunction :: Name -> Execution r Closure
 queryFunction f =
   gets (^. namespace . at f) >>= \case
     Just (Right (Just clo)) -> return clo
-    Just (Right Nothing) -> throw . Exception_Misc $ printf "the function `%s` cannot be queried before it has a value" (show f)
-    Just (Left _) -> throw . Exception_Misc $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
-    Nothing -> throw . Exception_Misc $ printf "the function `%s` cannot be queried before its declaration" (show f)
+    Just (Right Nothing) -> throw $ Excepting.FunctionUninitializedMention f
+    Just (Left _) -> throw $ Excepting.FunctionNo f
+    Nothing -> throw $ Excepting.FunctionUninitializedMention f
 
 queryFunction' :: Name -> Execution r (Maybe (Maybe Closure))
 queryFunction' f =
   gets (^. namespace . at f) >>= \case
     Just (Right (Just clo)) -> return $ Just (Just clo)
     Just (Right Nothing) -> return $ Just Nothing
-    Just (Left _) -> throw . Exception_Misc $ printf "expected `%s` to be a function, but it is actually a variable" (show f)
+    Just (Left _) -> throw $ Excepting.FunctionNo f
     Nothing -> return Nothing
 
 -- I/O
@@ -379,5 +377,11 @@ resetOutputs =
   modify $ outputs .~ mempty
 
 {-
-## Utilities
+## Excepting
 -}
+
+throw ::
+  Member (Error Excepting.Exception) r =>
+  Excepting.Executing ->
+  Sem r a
+throw = Excepting.throw . Excepting.Executing

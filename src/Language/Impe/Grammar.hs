@@ -28,6 +28,9 @@ data Type
   | FunctionType [Type] Type
   deriving (Eq)
 
+mainType :: Type
+mainType = FunctionType [] VoidType
+
 data Expression
   = Unit
   | Bool Bool
@@ -69,7 +72,7 @@ instance Show Instruction where
       printf
         "%s(%s): %s = %s"
         (show x)
-        (intercalate ", " . ((\(y, s) -> printf "%s: %s" (show y) (show s)) <$>) $ params)
+        (showParams params)
         (show t)
         (show inst)
     Conditional e inst1 inst2 ->
@@ -79,9 +82,9 @@ instance Show Instruction where
     Return e ->
       printf "return %s;" (show e)
     ProcedureCall f args ->
-      printf "%s(%s);" (show f) (intercalate ", " . map show $ args)
+      printf "%s(%s);" (show f) (showArgs args)
     PrimitiveFunctionBody f args ->
-      printf "[primitive(%s)(%s)]" (show f) (intercalate ", " . map show $ args)
+      printf "[primitive(%s)(%s)]" (show f) (showArgsNames args)
 
 instance Show Type where
   show = \case
@@ -89,7 +92,7 @@ instance Show Type where
     UnitType -> "unit"
     IntType -> "int"
     BoolType -> "bool"
-    FunctionType ss t -> printf "(%s) -> %s" (intercalate ", " . map show $ ss) (show t)
+    FunctionType ss t -> printf "(%s) -> %s" (showArgsTypes ss) (show t)
 
 instance Show Expression where
   show = \case
@@ -97,7 +100,23 @@ instance Show Expression where
     Bool b -> if b then "true" else "false"
     Int i -> show i
     Reference x -> show x
-    Application f args -> printf "%s(%s)" (show f) (intercalate ", " . map show $ args)
+    Application f args -> printf "%s(%s)" (show f) (showArgs args)
 
 instance Show Name where
   show (Name x) = x
+
+{-
+### Utilities
+-}
+
+showArgs :: [Expression] -> String
+showArgs = intercalate ", " . map show
+
+showArgsTypes :: [Type] -> String
+showArgsTypes = intercalate ", " . map show
+
+showArgsNames :: [Name] -> String
+showArgsNames = intercalate ", " . map show
+
+showParams :: [(Name, Type)] -> String
+showParams = intercalate ", " . map (\(x, t) -> printf "%s: %s" (show x) (show t))

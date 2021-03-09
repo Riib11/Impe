@@ -6,7 +6,7 @@ import qualified Data.List as List
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Namespace as Namespace
-import Language.Impe.Excepting as Excepting
+import qualified Language.Impe.Excepting as Excepting
 import Language.Impe.Grammar as Grammar
 import Language.Impe.Logging as Logging
 import Language.Impe.Primitive as Primitive
@@ -33,7 +33,7 @@ data Context = Context
 
 type Typecheck r a =
   ( Member (State Context) r,
-    Member (Error Exception) r,
+    Member (Error Excepting.Exception) r,
     Member (Output Log) r
   ) =>
   Sem r a
@@ -94,10 +94,8 @@ typecheckMain :: Typecheck r ()
 typecheckMain = do
   log Tag_Debug "typecheck main"
   gets (^. namespace . at mainName) >>= \case
-    Just (FunctionType [] VoidType) -> return ()
-    Just (FunctionType _ VoidType) -> throw . Exception_Misc $ printf "the function `main` cannot have any arguments"
-    Just (FunctionType _ _) -> throw . Exception_Misc $ printf "function `main` cannot cannot have non-void return type"
-    Just _ -> throw . Exception_Misc $ printf "the function `main` must be a function type that returns void"
+    Just t ->
+      unless (t == mainType) . throw $ Excepting.MainType
     Nothing -> return ()
 
 {-
@@ -135,8 +133,7 @@ synthesizeInstructionStep inst_ = case inst_ of
     foldM typecheckIntermediateTypes Nothing ts
   Declaration x t -> do
     log Tag_Debug $ printf "synthesize declaration: %s" (show inst_)
-    when (t == VoidType) $
-      throw . Exception_Misc $ printf "cannot declare variable `%s` to be of type `void`"
+    when (t == VoidType) . throw $ Excepting.VariableVoid x
     setType x t
     return Nothing
   Assignment x e -> do
@@ -165,18 +162,19 @@ synthesizeInstructionStep inst_ = case inst_ of
   Return e -> do
     log Tag_Debug $ printf "synthesize return: %s" (show inst_)
     Just <$> synthesizeExpression e
-  ProcedureCall f es -> do
+  ProcedureCall f args -> do
     log Tag_Debug $ printf "synthesize procedure call: %s" (show inst_)
     getType f >>= \case
-      FunctionType ss t -> do
-        unless (length es == length ss) $
-          throw . Exception_Misc $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\nto mismatching number of arguments\n\n  %s(%s)\n" (show f) (show $ FunctionType ss t) (show f) (List.intercalate ", " . map show $ es)
-        mapM_ (uncurry typecheckExpression) (zip es ss)
+      fType@(FunctionType ss t) -> do
+        unless (length args == length ss) . throw $
+          Excepting.ApplicationArgumentsNumber f fType (length ss) args
+        mapM_ (uncurry typecheckExpression) (zip args ss)
         return t
-      fType -> throw . Exception_Misc $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s\n" (show f) (show fType) (show es)
+      fType ->
+        throw $ Excepting.ApplicationNonfunction f fType args
     return Nothing
-  PrimitiveFunctionBody f xs ->
-    error $ printf "the type `%s` should not arise from source code" (show $ PrimitiveFunctionBody f xs)
+  PrimitiveFunctionBody f args ->
+    throw $ Excepting.PrimitiveFunctionBody f args
 
 synthesizeExpression :: Expression -> Typecheck r Type
 synthesizeExpression e_ = case e_ of
@@ -192,15 +190,16 @@ synthesizeExpression e_ = case e_ of
   Reference x -> do
     log Tag_Debug $ printf "synthesize reference: %s" (show e_)
     getType x
-  Application f es -> do
+  Application f args -> do
     log Tag_Debug $ printf "synthesize application: %s" (show e_)
     getType f >>= \case
-      FunctionType ss t -> do
-        unless (length es == length ss) $
-          throw . Exception_Misc $ printf "cannot apply function\n\n  %s\n\nof type\n\n  %s\n\nto mismatching number of arguments\n\n  %s(%s)\n" (show f) (show $ FunctionType ss t) (show f) (List.intercalate ", " . map show $ es)
-        mapM_ (uncurry typecheckExpression) (zip es ss)
+      fType@(FunctionType ss t) -> do
+        unless (length args == length ss) . throw $
+          Excepting.ApplicationArgumentsNumber f fType (length ss) args
+        mapM_ (uncurry typecheckExpression) (zip args ss)
         return t
-      fType -> throw . Exception_Misc $ printf "cannot apply reference\n\n  %s\n\nof non-function type\n\n  %s\n\nto arguments\n\n  %s(%s)\n" (show f) (show fType) (show f) (List.intercalate ", " . map show $ es)
+      fType ->
+        throw $ Excepting.ApplicationNonfunction f fType args
 
 {-
 ## Unification
@@ -208,7 +207,8 @@ synthesizeExpression e_ = case e_ of
 
 typecheckIntermediateTypes :: Maybe Type -> Maybe Type -> Typecheck r (Maybe Type)
 typecheckIntermediateTypes mb_t1 mb_t2 = do
-  log Tag_Debug $ printf "typecheck intermediate types: %s ~ %s" (show mb_t1) (show mb_t2)
+  log Tag_Debug $
+    printf "typecheck intermediate types: %s ~ %s" (show mb_t1) (show mb_t2)
   case (mb_t1, mb_t2) of
     (Nothing, Nothing) -> return Nothing
     (Nothing, Just t) -> return $ Just t
@@ -220,7 +220,7 @@ typecheckTypes s t = do
   log Tag_Debug $ printf "typecheck types: %s ~ %s" (show s) (show t)
   if s == t
     then return s
-    else throw . Exception_Misc $ printf "cannot unify type\n\n  %s\n\nwith type\n\n  %s\n" (show s) (show t)
+    else throw $ Excepting.TypeIncompatibility s t
 
 {-
 ## Namespace
@@ -239,11 +239,17 @@ getType :: Name -> Typecheck r Type
 getType n =
   gets (^. namespace . at n) >>= \case
     Just t -> return t
-    Nothing -> throw . Exception_Misc $ printf "the name `%s` cannot be mentioned before its declaration" (show n)
+    Nothing -> throw $ Excepting.UndeclaredReference n
 
 setType :: Name -> Type -> Typecheck r ()
 setType n t = modify $ namespace %~ initialize n t
 
 {-
-## Utilties
+## Excepting
 -}
+
+throw ::
+  Member (Error Excepting.Exception) r =>
+  Excepting.Typechecking ->
+  Sem r a
+throw = Excepting.throw . Excepting.Typechecking

@@ -17,9 +17,10 @@ An imperative, interpreted, simple, extendible language.
 
 This project demonstrates the following tools:
 
-- [parsec](https://hackage.haskell.org/package/parsec)
-- [mtl](https://hackage.haskell.org/package/mtl)
+- [polysemy](https://hackage.haskell.org/package/polysemy)
 - [lens](https://hackage.haskell.org/package/lens)
+- [mtl](https://hackage.haskell.org/package/mtl)
+- [parsec](https://hackage.haskell.org/package/parsec)
 - [optparse-applicative](https://hackage.haskell.org/package/optparse-applicative)
 
 ## Features
@@ -39,6 +40,8 @@ This project demonstrates the following tools:
 <!-- TODO -->
 
 ## To Do
+
+- [ ] error(exception) and warning codes (as ADTs)
 
 - [x] parse config of verbosity
 - [x] customize verbosity of logs throughout program

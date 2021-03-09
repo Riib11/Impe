@@ -1,6 +1,6 @@
 module Language.Impe.Parsing where
 
-import Language.Impe.Excepting
+import Language.Impe.Excepting as Excepting
 import Language.Impe.Grammar
 import Language.Impe.Lexing
 import Polysemy
@@ -24,7 +24,7 @@ parseExpression = parsed expression
 
 parsed :: Parser a -> String -> String -> Parsed r a
 parsed parser filename source = case runParser parser () filename source of
-  Left prsErr -> throw . Exception_Parsing $ prsErr
+  Left prsErr -> throw . Excepting.Parsing $ prsErr
   Right x -> return x
 
 {-
