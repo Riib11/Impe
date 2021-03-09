@@ -154,8 +154,11 @@ enterScope nsp = nsp & scope %~ (mempty <|)
 
 leaveScope :: Ord n => Namespace n a -> Namespace n a
 leaveScope nsp = case nsp ^. scope of
-  _ :| [] -> nsp & scope .~ mempty :| mempty -- cannot exit top scope
+  _ :| [] -> nsp & scope .~ mempty :| mempty
   _ :| (m : scp) -> nsp & scope .~ m :| scp
+
+-- _ :| [] -> nsp & garbagecollect . (scope .~ mempty :| mempty)
+-- _ :| (m : scp) -> nsp & garbagecollect . (scope .~ m :| scp)
 
 isVisible :: Ord n => n -> Namespace n a -> Bool
 isVisible n nsp = isJust $ lookup n nsp
@@ -180,5 +183,7 @@ invisibleUIDs nsp = foldl f [] (Map.keys (nsp ^. store))
       )
         ++ uids
 
+-- TODO: doesn't work...
+-- TODO: or perhaps it just doesnt work due to how leaveScope is used?
 garbagecollect :: Ord n => Namespace n a -> Namespace n a
 garbagecollect nsp = foldl (flip deleteUID) nsp (invisibleUIDs nsp)
