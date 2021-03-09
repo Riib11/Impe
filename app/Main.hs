@@ -106,8 +106,10 @@ startInteract = do
     ( do
         -- interpret source
         interpretProgram fn src
+        -- log outputs
+        Executing.logOutputs
+        -- start interact loop
         log Tag_Output "[impe - interact] start"
-        -- interact with context
         interact
     )
     >>= \case
