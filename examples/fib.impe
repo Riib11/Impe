@@ -27,7 +27,7 @@ main(): void = {
   i_end: int; 
   
   i_start <- 0;
-  i_end <- 20;
+  i_end <- 15;
 
   output_string("the first 20 Fibonacci numbers:");
 
