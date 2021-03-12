@@ -94,8 +94,7 @@ typecheckMain :: Typecheck r ()
 typecheckMain = do
   log Tag_Debug "typecheck main"
   gets (^. namespace . at mainName) >>= \case
-    Just t ->
-      unless (t == mainType) . throw $ Excepting.MainType
+    Just t -> when (t /= mainType) . throw $ Excepting.MainType
     Nothing -> return ()
 
 {-
@@ -127,7 +126,7 @@ synthesizeInstruction inst = do
 
 synthesizeInstructionStep :: Instruction -> Typecheck r (Maybe Type)
 synthesizeInstructionStep inst_ = case inst_ of
-  Block insts -> subScope do
+  Block insts -> withLocalScope do
     log Tag_Debug "synthesize block"
     ts <- mapM synthesizeInstructionStep insts
     foldM typecheckIntermediateTypes Nothing ts
@@ -145,20 +144,20 @@ synthesizeInstructionStep inst_ = case inst_ of
   Function f prms t inst -> do
     log Tag_Debug $ printf "synthesize function: %s" (show inst_)
     setType f $ FunctionType (snd <$> prms) t
-    subScope do
+    withLocalScope do
       mapM_ (\(x, s) -> setType x s) prms
       typecheckInstruction inst t
     return Nothing
   Conditional e inst1 inst2 -> do
     log Tag_Debug $ printf "synthesize conditional: %s" (show inst_)
     typecheckExpression e BoolType
-    mbt1 <- subScope $ synthesizeInstructionStep inst1
-    mbt2 <- subScope $ synthesizeInstructionStep inst2
+    mbt1 <- withLocalScope $ synthesizeInstructionStep inst1
+    mbt2 <- withLocalScope $ synthesizeInstructionStep inst2
     typecheckIntermediateTypes mbt1 mbt2
   Loop e inst -> do
     log Tag_Debug $ printf "synthesize loop: %s" (show inst_)
     typecheckExpression e BoolType
-    subScope $ synthesizeInstructionStep inst
+    withLocalScope $ synthesizeInstructionStep inst
   Return e -> do
     log Tag_Debug $ printf "synthesize return: %s" (show inst_)
     Just <$> synthesizeExpression e
@@ -227,11 +226,11 @@ typecheckTypes s t = do
 ## Namespace
 -}
 
-subScope :: Typecheck r a -> Typecheck r a
-subScope c = do
+withLocalScope :: Typecheck r a -> Typecheck r a
+withLocalScope tch = do
   log Tag_Debug $ printf "entering local scope"
   modify $ namespace %~ enterLocalScope
-  a <- c
+  a <- tch
   log Tag_Debug $ printf "leaving local scope"
   modify $ namespace %~ leaveLocalScope
   return a

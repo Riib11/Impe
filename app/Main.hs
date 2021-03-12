@@ -3,7 +3,7 @@ module Main where
 import Control.Lens
 import Control.Monad
 import qualified Language.Impe.Executing as Executing
-import Language.Impe.Interpreting
+import Language.Impe.Interpreting hiding (throw)
 import Language.Impe.Logging
 import qualified Language.Impe.Typechecking as Typechecking
 import Main.Config

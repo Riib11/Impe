@@ -17,8 +17,6 @@ data Instruction
   | Loop Expression Instruction
   | Return Expression
   | ProcedureCall Name [Expression] -- procedures are functions that don't return a value
-    -- | PrimitiveFunctionBody Name [Name] -- placeholder for primitive function bodies
-    -- | PrimitiveFunctionBody Name [Expression] -- placeholder for primitive function bodies
   deriving (Eq)
 
 data Type
@@ -86,10 +84,6 @@ instance Show Instruction where
       printf "return %s;" (show e)
     ProcedureCall f args ->
       printf "%s(%s);" (show f) (showArgs args)
-    -- PrimitiveFunctionBody f xs ->
-    --   printf "[primitive(%s)(%s)]" (show f) (showArgsNames xs)
-    -- PrimitiveFunctionBody f args ->
-    --   printf "[primitive(%s)(%s)]" (show f) (showArgs args)
 
 instance Show Type where
   show = \case

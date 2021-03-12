@@ -21,7 +21,7 @@ primitive_functions =
           ("*", [IntType, IntType], IntType),
           ("/", [IntType, IntType], IntType),
           ("^", [IntType, IntType], IntType),
-          ("%", [IntType, IntType], IntType]),
+          ("%", [IntType, IntType], IntType),
           ("=", [IntType, IntType], BoolType),
           (">", [IntType, IntType], BoolType),
           (">=", [IntType, IntType], BoolType),

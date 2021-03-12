@@ -19,6 +19,7 @@ data Exception
   = Parsing ParseError
   | Typechecking Typechecking
   | Executing Executing
+  | Interpreting Interpreting
   | Misc String
 
 instance Show Exception where
@@ -26,6 +27,7 @@ instance Show Exception where
     Parsing prsErr -> show prsErr
     Typechecking tchErr -> printf "[typecheck error] %s\n" (show tchErr)
     Executing exeErr -> printf "[execution error] %s\n" (show exeErr)
+    Interpreting itpErr -> printf "[interpretation error] %s\n" (show itpErr)
     Misc msg -> printf "[exception] miscellaneous\n%s" msg
 
 {-
@@ -77,6 +79,17 @@ instance Show Executing where
     FunctionUndeclaredMention x -> printf "the function `%s` must be declared before it can be mentioned" (show x)
     FunctionUninitializedMention x -> printf "the function `%s` must be initialized before it can be mentioned" (show x)
     FunctionNo f -> printf "expected the name `%s` to refer to a (constructed) function" (show f)
+
+{-
+### Interpreting
+-}
+
+data Interpreting
+  = ExpressionVoid Grammar.Expression
+
+instance Show Interpreting where
+  show = \case
+    ExpressionVoid e -> printf "the expression `%s` was expected to have a value (i.e. is not of type `void`), yet it does not" (show e)
 
 {-
 ## Excepting computation

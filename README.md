@@ -41,9 +41,10 @@ This project demonstrates the following tools:
 
 ## To Do
 
-- [ ] better organization for executing and parsing primitive functions and
-      variables
+- [ ] organize imports/exports names
 
+- [x] better organization for executing and parsing primitive functions and
+      variables
 - [x] error(exception) and warning codes (as ADTs)
 - [x] parse config of verbosity
 - [x] customize verbosity of logs throughout program

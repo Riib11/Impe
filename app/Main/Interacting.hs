@@ -57,30 +57,33 @@ interactStep = do
   cmd <- parseCommand src
   log Tag_Debug $ printf "parsed command: %s" (show cmd)
   -- handle command
-  parseCommand src >>= \case
-    Command_Instruction inst -> do
-      -- interpret input
-      (mb_v, t) <- interpretInstructionParsed inst
-      -- handle outputs
-      Executing.logOutputs
-      Executing.resetOutputs
-      -- result
-      case mb_v of
-        Just v -> log Tag_Output $ printf "returns %s :: %s" (show v) (show t)
-        Nothing -> return ()
-      -- continue
-      return True
-    Command_Expression expr -> do
-      -- interpret input
-      (v, t) <- interpretExpressionParsed expr
-      -- handle outputs
-      Executing.logOutputs
-      Executing.resetOutputs
-      -- result
-      log Tag_Output $ printf "%s :: %s" (show v) (show t)
-      -- continue
-      return True
-    Command_MetaCommand mtacmd -> interpretMetaCommand mtacmd
+  b <-
+    parseCommand src >>= \case
+      Command_Instruction inst -> do
+        -- interpret input
+        (mb_v, t) <- interpretInstructionParsed inst
+        -- handle outputs
+        Executing.logOutputs
+        Executing.resetOutputs
+        -- result
+        case mb_v of
+          Just v -> log Tag_Output $ printf "returns %s :: %s" (show v) (show t)
+          Nothing -> return ()
+        -- continue
+        return True
+      Command_Expression expr -> do
+        -- interpret input
+        (v, t) <- interpretExpressionParsed expr
+        -- handle outputs
+        Executing.logOutputs
+        Executing.resetOutputs
+        -- result
+        log Tag_Output $ printf "%s :: %s" (show v) (show t)
+        -- continue
+        return True
+      Command_MetaCommand mtacmd -> interpretMetaCommand mtacmd
+  log Tag_Output $ printf "\n"
+  return b
 
 interpretMetaCommand ::
   ( Member (Output Log) r,

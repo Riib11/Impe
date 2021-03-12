@@ -1,5 +1,6 @@
 module Language.Impe.Parsing where
 
+import Control.Monad
 import Language.Impe.Excepting as Excepting
 import Language.Impe.Grammar
 import Language.Impe.Lexing
@@ -280,7 +281,7 @@ inputREPL = do
 
 commandREPL :: Parser CommandREPL
 commandREPL = do
-  char ':'
+  void $ char ':'
   choice . map try $
     [ do
         choice . map symbol $ ["q", "quit"]

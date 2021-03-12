@@ -1,6 +1,8 @@
 module Language.Impe.Interpreting where
 
-import Language.Impe.Excepting as Excepting
+import Control.Monad
+import Language.Impe.Excepting (Exception)
+import qualified Language.Impe.Excepting as Excepting
 import qualified Language.Impe.Executing as Executing
 import Language.Impe.Grammar
 import Language.Impe.Logging
@@ -96,6 +98,7 @@ interpretExpressionParsed expr = do
   -- typecheck
   log Tag_Debug $ "typechecking expression"
   t <- Typechecking.synthesizeExpression expr
+  when (t == VoidType) . throw $ Excepting.ExpressionVoid expr
   tchCtx <- get :: Member (State Typechecking.Context) r => Sem r Typechecking.Context
   log Tag_Debug $ printf "typechecked context:\n\n%s\n" (show tchCtx)
   -- execute
@@ -105,3 +108,10 @@ interpretExpressionParsed expr = do
   log Tag_Debug $ printf "executed context:\n\n%s\n" (show exeCtx)
   --
   return (v, t)
+
+{-
+## Excepting
+-}
+
+throw :: Excepting.Interpreting -> Interpretation r a
+throw = Excepting.throw . Excepting.Interpreting

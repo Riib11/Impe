@@ -69,10 +69,10 @@ instance Show Context where
           $ ctx ^. namespace . store . to Map.toList,
         "",
         "inputs:",
-        "    " ++ ctx ^. inputs . to (List.intercalate "\n    "),
+        "  " ++ ctx ^. inputs . to reverse . to (List.intercalate "\n    "),
         "",
         "outputs:",
-        "    " ++ ctx ^. outputs . to (List.intercalate "\n    ")
+        "  " ++ ctx ^. outputs . to reverse . to (List.intercalate "\n    ")
       ]
     where
       showEntry (uid, e) = case e of
@@ -202,14 +202,14 @@ executeInstruction inst_ = case inst_ of
           -- execute instruction in function scope
           log Tag_Debug $ printf "execute closure instruction in function scope"
           void $ executeInstruction inst
-          -- ignore result
-          return Nothing
       -- primitive function
       Right pf -> withLocalScope do
         -- evaluate arguments in outer scope
-        args' <- mapM evaluateExpression args
-        -- hand-off to execute primitive function
-        executePrimitiveFunction pf args'
+        vs <- mapM evaluateExpression args
+        -- execute primitive function
+        void $ executePrimitiveFunction pf vs
+    -- ignore result
+    return Nothing
 
 executePrimitiveFunction :: Name -> [Expression] -> Execution r (Maybe Value)
 executePrimitiveFunction f args = do
@@ -218,8 +218,8 @@ executePrimitiveFunction f args = do
     -- bool
     (Name "&&", [Bool p, Bool q]) -> return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) -> return . Just $ Bool (p || q)
-    (Name "output_bool", b) -> writeOutput (show b) >> return Nothing
-    (Name "bool_to_int", b) -> return . Just $ String (show b)
+    (Name "output_bool", [b]) -> writeOutput (show b) >> return Nothing
+    (Name "bool_to_int", [b]) -> return . Just $ String (show b)
     -- int
     (Name "+", [Int x, Int y]) -> return . Just $ Int (x + y)
     (Name "-", [Int x, Int y]) -> return . Just $ Int (x - y)
@@ -232,8 +232,8 @@ executePrimitiveFunction f args = do
     (Name ">=", [Int x, Int y]) -> return . Just $ Bool (x >= y)
     (Name "<", [Int x, Int y]) -> return . Just $ Bool (x < y)
     (Name "<=", [Int x, Int y]) -> return . Just $ Bool (x <= y)
-    (Name "int_to_string", i) -> return . Just $ String (show i)
-    (Name "output_int", i) -> writeOutput (show i) >> return Nothing
+    (Name "int_to_string", [i]) -> return . Just $ String (show i)
+    (Name "output_int", [i]) -> writeOutput (show i) >> return Nothing
     -- string
     (Name "<>", [String a, String b]) -> return . Just $ String (a <> b)
     (Name "output_string", [String a]) -> writeOutput a >> return Nothing
