@@ -216,6 +216,7 @@ executePrimitiveFunction f args = do
   log Tag_Debug $ printf "execute primitive function: %s(%s)" (show f) (showArgs args)
   case (f, args) of
     -- bool
+    (Name "~", [Bool p]) -> return . Just $ Bool (not p)
     (Name "&&", [Bool p, Bool q]) -> return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) -> return . Just $ Bool (p || q)
     (Name "output_bool", [b]) -> writeOutput (show b) >> return Nothing
