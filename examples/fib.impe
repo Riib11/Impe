@@ -30,7 +30,7 @@ main(): void = {
   i_end <- 15;
 
   output_string("the first 20 Fibonacci numbers:");
-
+ 
   i: int;
   i <- i_start;
   while <(i, i_end) do {

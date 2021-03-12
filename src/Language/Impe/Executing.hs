@@ -191,16 +191,21 @@ executeInstruction inst_ = case inst_ of
       -- closure
       Left ((xs, inst), scp) -> withLocalScope do
         -- evaluate arguments in local scope
+        log Tag_Debug $ printf "evaluate arguments: %s" (show args)
         vs <- mapM evaluateExpression args
         -- init param vars in local scope (will be GC'ed by `withLocalScope`)
+        log Tag_Debug $ printf "initialize paramater variables: %s" (show xs)
         mapM_ (uncurry initializeVariable) (zip xs vs)
+        --
+        log Tag_Debug $ printf "enter function scope"
         withScope scp do
           -- execute instruction in function scope
+          log Tag_Debug $ printf "execute closure instruction in function scope"
           void $ executeInstruction inst
           -- ignore result
           return Nothing
       -- primitive function
-      Right pf -> do
+      Right pf -> withLocalScope do
         -- evaluate arguments in outer scope
         args' <- mapM evaluateExpression args
         -- hand-off to execute primitive function
@@ -213,23 +218,26 @@ executePrimitiveFunction f args = do
     -- bool
     (Name "&&", [Bool p, Bool q]) -> return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) -> return . Just $ Bool (p || q)
-    (Name "output_bool", [Bool v]) -> do
-      writeOutput (if v then "true" else "false")
-      return Nothing
+    (Name "output_bool", b) -> writeOutput (show b) >> return Nothing
+    (Name "bool_to_int", b) -> return . Just $ String (show b)
     -- int
     (Name "+", [Int x, Int y]) -> return . Just $ Int (x + y)
     (Name "-", [Int x, Int y]) -> return . Just $ Int (x - y)
     (Name "*", [Int x, Int y]) -> return . Just $ Int (x * y)
+    (Name "/", [Int x, Int y]) -> return . Just $ Int (x `div` y)
     (Name "^", [Int x, Int y]) -> return . Just $ Int (x ^ y)
+    (Name "%", [Int x, Int y]) -> return . Just $ Int (x `mod` y)
     (Name "=", [Int x, Int y]) -> return . Just $ Bool (x == y)
     (Name ">", [Int x, Int y]) -> return . Just $ Bool (x > y)
     (Name ">=", [Int x, Int y]) -> return . Just $ Bool (x >= y)
     (Name "<", [Int x, Int y]) -> return . Just $ Bool (x < y)
     (Name "<=", [Int x, Int y]) -> return . Just $ Bool (x <= y)
-    (Name "output_int", [Int v]) -> writeOutput (show v) >> return Nothing
+    (Name "int_to_string", i) -> return . Just $ String (show i)
+    (Name "output_int", i) -> writeOutput (show i) >> return Nothing
     -- string
     (Name "<>", [String a, String b]) -> return . Just $ String (a <> b)
     (Name "output_string", [String a]) -> writeOutput a >> return Nothing
+    -- uninterpreted
     _ ->
       throw $ Excepting.UninterpretedPrimitiveFunction f args
 
@@ -264,7 +272,7 @@ evaluateExpression e_ = case e_ of
           -- evaluate instruction, returning result
           evaluateInstruction inst
       -- primitive function
-      Right pf -> do
+      Right pf -> withLocalScope do
         -- evaluate arguments in outer scope
         args' <- mapM evaluateExpression args
         -- hand-off to execute primitive function
@@ -284,18 +292,18 @@ withLocalScope exe = do
   log Tag_Debug $ "entering local scope"
   modify $ namespace %~ enterLocalScope -- enter local scope
   a <- exe
-  log Tag_Debug $ "leaving local scope"
+  scp <- gets (^. namespace . scope)
+  log Tag_Debug $ printf "leaving local scope: %s" (show . Map.elems $ NonEmpty.head scp)
   modify $ namespace %~ leaveLocalScope -- leave local scope
   return a
 
 withScope :: Scope Name -> Execution r a -> Execution r a
 withScope scp exe = do
   log Tag_Debug $ printf "entering scope: %s" (show scp)
-  scpOri <- gets (^. namespace . scope) -- capture original scope
-  modify $ namespace . scope .~ scp -- adopt new scope
+  modify $ namespace %~ recallScope scp -- recall given scope
   a <- exe
-  log Tag_Debug $ printf "leaving scope: %s" (show scp)
-  modify $ namespace . scope .~ scpOri -- reset to original scope
+  log Tag_Debug $ printf "leaving scope: %s" (show . fmap Map.elems $ scp)
+  modify $ namespace %~ forgetScope scp -- forget given scope
   return a
 
 -- declare

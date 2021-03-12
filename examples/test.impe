@@ -1,3 +1,5 @@
-main(): void = {
-  output_bool(true);
+f(x: int): int = {
+  return x;
 }
+
+f(1);

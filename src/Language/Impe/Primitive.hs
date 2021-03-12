@@ -12,17 +12,22 @@ primitive_functions =
     <$> [ -- bool
           ("&&", [BoolType, BoolType], BoolType),
           ("||", [BoolType, BoolType], BoolType),
+          ("~", [BoolType], BoolType),
+          ("bool_to_string", [BoolType], StringType),
           ("output_bool", [BoolType], VoidType),
           -- int
           ("+", [IntType, IntType], IntType),
           ("-", [IntType, IntType], IntType),
           ("*", [IntType, IntType], IntType),
+          ("/", [IntType, IntType], IntType),
           ("^", [IntType, IntType], IntType),
+          ("%", [IntType, IntType], IntType]),
           ("=", [IntType, IntType], BoolType),
           (">", [IntType, IntType], BoolType),
           (">=", [IntType, IntType], BoolType),
           ("<", [IntType, IntType], BoolType),
           ("<=", [IntType, IntType], BoolType),
+          ("int_to_string", [IntType], StringType),
           ("output_int", [IntType], VoidType),
           -- string
           ("<>", [StringType, StringType], VoidType),

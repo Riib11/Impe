@@ -2,7 +2,8 @@ module Data.Namespace where
 
 import Control.Applicative
 import Control.Lens hiding ((<|))
-import Data.List.NonEmpty as NonEmpty (NonEmpty ((:|)), (<|))
+import Data.List.NonEmpty (NonEmpty ((:|)), (<|))
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Maybe as Maybe
 import Text.Printf
@@ -210,16 +211,30 @@ replaceStore uid a = adaptStore uid (\_ -> Just a)
 ## Utilities
 -}
 
+-- enter a new (empty) local scope
 enterLocalScope :: Ord n => Namespace n a -> Namespace n a
 enterLocalScope nsp = nsp & scope %~ (mempty <|)
 
+-- leave the local scope and garbagecollect its references
 leaveLocalScope :: Ord n => Namespace n a -> Namespace n a
 leaveLocalScope nsp = case nsp ^. scope of
   _ :| [] -> nsp & scope .~ mempty :| mempty
   m :| (m' : scp) ->
     nsp
-      & deleteUIDs (Map.elems m)
+      & deleteUIDs (Map.elems m) -- garbagecollect
         . (scope .~ m' :| scp)
+
+-- adds the given scope on top of current scope
+recallScope :: Ord n => Scope n -> Namespace n a -> Namespace n a
+recallScope scp nsp = nsp & scope %~ (scp <>)
+
+-- removes `n` scope levels from local scope, without garbagecollection,
+-- where `n` is the depth of the given scope
+-- TODO: danger- assumes `scp` is at top of scope
+-- TODO: danger- assumes not called down to bottom scope
+forgetScope :: Ord n => Scope n -> Namespace n a -> Namespace n a
+forgetScope scp nsp =
+  nsp & scope %~ NonEmpty.fromList . NonEmpty.drop (NonEmpty.length scp)
 
 isVisible :: Ord n => n -> Namespace n a -> Bool
 isVisible n nsp = isJust $ lookup n nsp
@@ -227,7 +242,7 @@ isVisible n nsp = isJust $ lookup n nsp
 isReferencedFromScope :: Ord n => UID n -> Scope n -> Bool
 isReferencedFromScope uid scp = foldl f False scp
   where
-    f b m = if b then True else uid `elem` Map.elems m
+    f b m = b || uid `elem` Map.elems m
 
 visibleUIDs :: Ord n => Namespace n a -> [UID n]
 visibleUIDs nsp = foldl f [] (nsp ^. scope)
