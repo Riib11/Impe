@@ -2,26 +2,19 @@ module Main where
 
 import Control.Lens
 import Control.Monad
-import Data.List (intercalate)
-import Data.Version (showVersion)
-import Development.GitRev (gitHash)
 import qualified Language.Impe.Executing as Executing
 import Language.Impe.Interpreting
 import Language.Impe.Logging
 import qualified Language.Impe.Typechecking as Typechecking
 import Main.Config
-import Main.Config.Grammar
 import Main.Excepting as Excepting
 import Main.Interacting as Interacting
-import Options.Applicative
-import Paths_impe (version)
 import Polysemy hiding (interpret)
 import Polysemy.Error (Error, runError)
 import Polysemy.Output
 import Polysemy.Reader
 import Polysemy.State
 import System.IO as IO hiding (interact)
-import Text.ParserCombinators.Parsec (runParser)
 import Text.Printf
 import Prelude hiding (interact, log)
 
@@ -76,7 +69,7 @@ startInterpret = do
         Executing.logOutputs
     )
     >>= \case
-      Left exp -> throw . Excepting.Interpretation $ exp
+      Left excp -> throw . Excepting.Interpretation $ excp
       Right () -> return ()
 
 startInteract ::
@@ -114,7 +107,7 @@ startInteract = do
         interact
     )
     >>= \case
-      Left exp -> throw . Excepting.Interaction $ exp
+      Left excp -> throw . Excepting.Interaction $ excp
       Right () -> return ()
 
 handleOutputLog ::
@@ -123,7 +116,7 @@ handleOutputLog ::
   ) =>
   Log ->
   Sem r ()
-handleOutputLog log@(Log tag msg) = do
+handleOutputLog lg@(Log tag _) = do
   Verbosity tags <- asks verbosity
-  when (tag `elem` tags) $
-    embed $ printf "%s" (show log)
+  when (tag `elem` tags) . embed $
+    printf "%s" (show lg)

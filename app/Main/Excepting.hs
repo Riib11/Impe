@@ -5,6 +5,7 @@ import Polysemy
 import Polysemy.Error hiding (throw)
 import qualified Polysemy.Error as Error
 import Text.Printf
+import Prelude hiding (exp)
 
 {-
 # Excepting
@@ -22,8 +23,8 @@ data Exception
 
 instance Show Exception where
   show = \case
-    Interpretation exp -> show exp
-    Interaction exp -> show exp
+    Interpretation excp -> show excp
+    Interaction excp -> show excp
     Config msg -> printf "[exception] config\n%s" msg
     Misc msg -> printf "[exception] miscellaneous\n%s" msg
 

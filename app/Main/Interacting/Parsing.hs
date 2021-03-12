@@ -1,16 +1,12 @@
 module Main.Interacting.Parsing where
 
 import Language.Impe.Excepting as Excepting
-import Language.Impe.Grammar
-import Language.Impe.Interpreting
-import Language.Impe.Logging
 import qualified Language.Impe.Parsing as ImpeParsing
 import Main.Interacting.Grammar
 import Main.Interacting.Lexing
 import Polysemy
 import Polysemy.Error (Error)
 import Text.ParserCombinators.Parsec
-import Text.Printf
 import Prelude hiding (interact, log)
 
 {-

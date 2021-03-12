@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d9a626864a60412fb94f3bfee547a6ddf6f01f00f91c6c61d8c3103c7c0d2991
+-- hash: d0de6564141edcbe8519c37e35e05b4c4c48d3dd756bfdc15e147e357320300b
 
 name:           impe
 version:        0.1.0.0
@@ -42,7 +42,7 @@ library
   hs-source-dirs:
       src
   default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeOperators TypeFamilies ApplicativeDo
-  ghc-options: -Wall -Wno-missing-signatures -Wno-unused-do-bind -fplugin=Polysemy.Plugin
+  ghc-options: -Wall -Wno-missing-signatures -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
     , containers
@@ -70,7 +70,7 @@ executable impe-exe
   hs-source-dirs:
       app
   default-extensions: GADTs LambdaCase BlockArguments TemplateHaskell RankNTypes FlexibleInstances MultiParamTypeClasses FlexibleContexts UndecidableInstances DataKinds TypeFamilies TypeOperators ApplicativeDo
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Polysemy.Plugin
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -fplugin=Polysemy.Plugin
   build-depends:
       base >=4.7 && <5
     , containers

@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+
 module Language.Impe.Lexing where
 
 import Control.Monad.Identity

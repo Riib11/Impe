@@ -54,7 +54,7 @@ instance Show Context where
             . to (List.intercalate "\n    " . map (show . Map.elems)),
         "  store:",
         List.intercalate "\n"
-          . map (\((x, i), t) -> printf "    %s#%s: %s" (show x) (show i) (show t))
+          . map (\(uid, t) -> printf "    %s: %s" (show uid) (show t))
           $ ctx ^. namespace . store . to Map.toList
       ]
 
@@ -230,10 +230,10 @@ typecheckTypes s t = do
 subScope :: Typecheck r a -> Typecheck r a
 subScope c = do
   log Tag_Debug $ printf "entering local scope"
-  modify $ namespace %~ enterScope
+  modify $ namespace %~ enterLocalScope
   a <- c
   log Tag_Debug $ printf "leaving local scope"
-  modify $ namespace %~ leaveScope
+  modify $ namespace %~ leaveLocalScope
   return a
 
 getType :: Name -> Typecheck r Type

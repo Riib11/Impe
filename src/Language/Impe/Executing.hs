@@ -75,19 +75,19 @@ instance Show Context where
         "    " ++ ctx ^. outputs . to (List.intercalate "\n    ")
       ]
     where
-      showEntry ((x, i), e) = case e of
+      showEntry (uid, e) = case e of
         EntryValue mb_val -> case mb_val of
           Just val ->
-            printf "    variable %s#%s = %s" (show x) (show i) (show val)
+            printf "    variable %s = %s" (show uid) (show val)
           Nothing ->
-            printf "    variable %s uninitialized" (show x)
+            printf "    variable %s uninitialized" (show uid)
         EntryClosure mb_clo -> case mb_clo of
           Just ((xs, inst), _) ->
-            printf "    function %s(%s) = %s" (show x) (showArgsNames xs) (show inst)
+            printf "    function %s(%s) = %s" (show uid) (showArgsNames xs) (show inst)
           Nothing ->
-            printf "    function %s uninitialized" (show x)
+            printf "    function %s uninitialized" (show uid)
         EntryPrimitiveFunction ->
-          printf "    function %s primitive" (show x)
+          printf "    function %s primitive" (show uid)
 
 {-
 ### Interface
@@ -121,7 +121,7 @@ executePrelude = do
     ( \(x, _, e) ->
         do
           declareVariable x
-          updateVariable x =<< evaluateExpression e
+          adjustVariable x =<< evaluateExpression e
     )
     primitive_variables
   -- primitive functions
@@ -143,7 +143,7 @@ executeMain =
 
 executeInstruction :: Instruction -> Execution r (Maybe Value)
 executeInstruction inst_ = case inst_ of
-  Block insts -> subScope do
+  Block insts -> withLocalScope do
     log Tag_Debug "execute block start"
     mb_v <- foldl (<|>) Nothing <$> traverse executeInstruction insts
     log Tag_Debug "execute block end"
@@ -154,18 +154,18 @@ executeInstruction inst_ = case inst_ of
     return Nothing
   Assignment x e -> do
     log Tag_Debug $ printf "execute assignment: %s" (show inst_)
-    updateVariable x =<< evaluateExpression e
+    adjustVariable x =<< evaluateExpression e
     return Nothing
   Function f params _ inst -> do
     log Tag_Debug $ printf "execute function definition: %s" (show inst_)
     declareFunction f
-    updateFunction f (fst <$> params, inst)
+    adjustFunction f (fst <$> params, inst)
     return Nothing
   Conditional e inst1 inst2 -> do
     log Tag_Debug $ printf "execute conditional: %s" (show inst_)
     evaluateExpression e >>= \case
-      Bool True -> subScope $ executeInstruction inst1
-      Bool False -> subScope $ executeInstruction inst2
+      Bool True -> withLocalScope $ executeInstruction inst1
+      Bool False -> withLocalScope $ executeInstruction inst2
       v -> throw $ Excepting.ValueMaltyped e BoolType v
   Loop e inst -> do
     log Tag_Debug $ printf "execute loop: %s" (show inst_)
@@ -177,7 +177,7 @@ executeInstruction inst_ = case inst_ of
             log Tag_Debug $ printf "execute loop iteration to return value: %s" (show v)
             return $ Just v
           Nothing ->
-            subScope $ executeInstruction $ Loop e inst
+            withLocalScope $ executeInstruction $ Loop e inst
       Bool False -> do
         log Tag_Debug $ printf "evaluate loop condition to false: %s" (show e)
         return Nothing
@@ -189,15 +189,15 @@ executeInstruction inst_ = case inst_ of
     log Tag_Debug $ printf "execute procedure call: %s" (show inst_)
     queryFunction f >>= \case
       -- closure
-      Left ((params, inst), scp) -> do
-        -- evaluate arguments in outer scope
-        args' <- mapM evaluateExpression args
+      Left ((xs, inst), scp) -> withLocalScope do
+        -- evaluate arguments in local scope
+        vs <- mapM evaluateExpression args
+        -- init param vars in local scope (will be GC'ed by `withLocalScope`)
+        mapM_ (uncurry initializeVariable) (zip xs vs)
         withScope scp do
-          -- declare argument bindings in inner scope
-          mapM_
-            (\(x, v) -> do declareVariable x; updateVariable x v)
-            (zip params args')
+          -- execute instruction in function scope
           void $ executeInstruction inst
+          -- ignore result
           return Nothing
       -- primitive function
       Right pf -> do
@@ -253,12 +253,15 @@ evaluateExpression e_ = case e_ of
     log Tag_Debug $ printf "evaluate application: %s" (show e_)
     queryFunction f >>= \case
       -- constructed function
-      Left ((xs, inst), scp) -> do
-        -- evaluate arguments in outer scope
-        args' <- mapM evaluateExpression args
+      Left ((xs, inst), scp) -> withLocalScope do
+        -- evaluate arguments in local scope
+        vs <- mapM evaluateExpression args
+        -- init param vars in local scope (will be GC'ed by `withLocalScope`)
+        mapM_ (uncurry initializeVariable) (zip xs vs)
         withScope scp do
           -- declare argument bindings in inner scope
-          mapM_ (\(x, v) -> do declareVariable x; updateVariable x v) (zip xs args')
+          mapM_ (uncurry adjustVariable) (zip xs vs)
+          -- evaluate instruction, returning result
           evaluateInstruction inst
       -- primitive function
       Right pf -> do
@@ -276,23 +279,23 @@ evaluateExpression e_ = case e_ of
 
 -- scoping
 
-subScope :: Execution r a -> Execution r a
-subScope exe = do
+withLocalScope :: Execution r a -> Execution r a
+withLocalScope exe = do
   log Tag_Debug $ "entering local scope"
-  modify $ namespace %~ enterScope -- enter local scope
+  modify $ namespace %~ enterLocalScope -- enter local scope
   a <- exe
   log Tag_Debug $ "leaving local scope"
-  modify $ namespace %~ leaveScope -- leave local scope
+  modify $ namespace %~ leaveLocalScope -- leave local scope
   return a
 
 withScope :: Scope Name -> Execution r a -> Execution r a
 withScope scp exe = do
   log Tag_Debug $ printf "entering scope: %s" (show scp)
-  scpOri <- gets (^. namespace . scope)
+  scpOri <- gets (^. namespace . scope) -- capture original scope
   modify $ namespace . scope .~ scp -- adopt new scope
   a <- exe
   log Tag_Debug $ printf "leaving scope: %s" (show scp)
-  modify $ namespace . scope .~ scpOri -- resert original scope
+  modify $ namespace . scope .~ scpOri -- reset to original scope
   return a
 
 -- declare
@@ -311,8 +314,8 @@ declarePrimitiveFunction f =
 
 -- update
 
-updateVariable :: Name -> Value -> Execution r ()
-updateVariable x val =
+adjustVariable :: Name -> Value -> Execution r ()
+adjustVariable x val =
   gets (^. namespace . at x) >>= \case
     Just (EntryValue _) ->
       modify $ namespace . at x .~ Just ((EntryValue . Just) val)
@@ -323,8 +326,8 @@ updateVariable x val =
     Nothing ->
       modify $ namespace . at x .~ Just ((EntryValue . Just) val)
 
-updateFunction :: Name -> Binding -> Execution r ()
-updateFunction f bnd =
+adjustFunction :: Name -> Binding -> Execution r ()
+adjustFunction f bnd =
   gets (^. namespace . at f) >>= \case
     Just (EntryClosure _) -> do
       scp <- gets (^. namespace . scope)
@@ -386,6 +389,18 @@ queryFunction' f =
     Just (EntryValue _) -> throw $ Excepting.FunctionNo f
     Just EntryPrimitiveFunction -> return . Just . Right $ f
     Nothing -> return Nothing
+
+-- initialize
+
+initializeVariable :: Name -> Value -> Execution r ()
+initializeVariable x v = do
+  declareVariable x
+  adjustVariable x v
+
+initializeFunction :: Name -> Binding -> Execution r ()
+initializeFunction f bnd = do
+  declareFunction f
+  adjustFunction f bnd
 
 -- I/O
 

@@ -1,28 +1,20 @@
 module Main.Interacting where
 
-import Control.Lens
 import Control.Monad
 import Data.List (intercalate)
-import Data.Version (showVersion)
-import Development.GitRev (gitHash)
 import qualified Language.Impe.Excepting as ImpeExcepting
 import qualified Language.Impe.Executing as Executing
-import Language.Impe.Grammar
 import Language.Impe.Interpreting
 import Language.Impe.Logging
 import qualified Language.Impe.Typechecking as Typechecking
 import qualified Main.Excepting as MainExcepting
 import Main.Interacting.Grammar
 import Main.Interacting.Parsing
-import Options.Applicative
-import Paths_impe (version)
 import Polysemy
 import Polysemy.Error (Error, runError)
 import Polysemy.Output (Output)
-import Polysemy.Reader
 import Polysemy.State
 import System.IO hiding (interact)
-import Text.ParserCombinators.Parsec (runParser)
 import Text.Printf
 import Prelude hiding (interact, log)
 

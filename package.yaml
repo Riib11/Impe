@@ -50,7 +50,6 @@ library:
   ghc-options:
     - -Wall
     - -Wno-missing-signatures
-    - -Wno-unused-do-bind
     - -fplugin=Polysemy.Plugin
 
 executables:
@@ -75,7 +74,7 @@ executables:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
-      # - -Wall
+      - -Wall
       - -fplugin=Polysemy.Plugin
     dependencies:
       - impe

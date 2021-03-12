@@ -5,6 +5,7 @@ import Control.Lens hiding ((<|))
 import Data.List.NonEmpty as NonEmpty (NonEmpty ((:|)), (<|))
 import qualified Data.Map as Map
 import Data.Maybe as Maybe
+import Text.Printf
 import Prelude hiding (lookup)
 
 {-
@@ -29,7 +30,14 @@ type Scope n = NonEmpty (Map.Map n (UID n))
 type Store n a = Map.Map (UID n) a
 
 -- unique identifier
-type UID n = (n, Int)
+data UID n = UID n Int
+  deriving (Eq)
+
+instance Show n => Show (UID n) where
+  show (UID n i) = printf "%s#%s" (show n) (show i)
+
+instance Ord n => Ord (UID n) where
+  UID n1 i1 <= UID n2 i2 = n1 <= n2 && (n1 /= n2 || i1 <= i2)
 
 makeLenses ''Namespace
 
@@ -110,7 +118,7 @@ initializeStore :: Ord n => UID n -> a -> Store n a -> Store n a
 initializeStore uid a str = Map.insert uid a str
 
 newUID :: n -> Namespace n a -> (Namespace n a, UID n)
-newUID n nsp = (nsp & counter %~ succ, (n, nsp ^. counter))
+newUID n nsp = (nsp & counter %~ succ, UID n (nsp ^. counter))
 
 -- delete
 
@@ -202,11 +210,11 @@ replaceStore uid a = adaptStore uid (\_ -> Just a)
 ## Utilities
 -}
 
-enterScope :: Ord n => Namespace n a -> Namespace n a
-enterScope nsp = nsp & scope %~ (mempty <|)
+enterLocalScope :: Ord n => Namespace n a -> Namespace n a
+enterLocalScope nsp = nsp & scope %~ (mempty <|)
 
-leaveScope :: Ord n => Namespace n a -> Namespace n a
-leaveScope nsp = case nsp ^. scope of
+leaveLocalScope :: Ord n => Namespace n a -> Namespace n a
+leaveLocalScope nsp = case nsp ^. scope of
   _ :| [] -> nsp & scope .~ mempty :| mempty
   m :| (m' : scp) ->
     nsp
@@ -237,6 +245,6 @@ invisibleUIDs nsp = foldl f [] (Map.keys (nsp ^. store))
         ++ uids
 
 -- TODO: doesn't work...
--- TODO: or perhaps it just doesnt work due to how leaveScope is used?
+-- TODO: or perhaps it just doesnt work due to how leaveLocalScope is used?
 garbagecollect :: Ord n => Namespace n a -> Namespace n a
 garbagecollect nsp = foldl (flip deleteUID) nsp (invisibleUIDs nsp)
