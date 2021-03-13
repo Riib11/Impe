@@ -1,4 +1,14 @@
-module Language.Impe.Typechecking where
+module Language.Impe.Typechecking
+  ( Context (..),
+    emptyContext,
+    typecheckProgram,
+    typecheckInstruction,
+    typecheckExpression,
+    synthesizeInstruction,
+    synthesizeInstructionStep,
+    synthesizeExpression,
+  )
+where
 
 import Control.Lens hiding (Context)
 import Control.Monad

@@ -1,4 +1,8 @@
-module Language.Impe.Primitive where
+module Language.Impe.Primitive
+  ( primitive_variables,
+    primitive_functions,
+  )
+where
 
 import Language.Impe.Grammar
 
@@ -14,7 +18,7 @@ primitive_functions =
           ("||", [BoolType, BoolType], BoolType),
           ("~", [BoolType], BoolType),
           ("bool_to_string", [BoolType], StringType),
-          ("output_bool", [BoolType], VoidType),
+          ("write_bool", [BoolType], VoidType),
           -- int
           ("+", [IntType, IntType], IntType),
           ("-", [IntType, IntType], IntType),
@@ -28,10 +32,11 @@ primitive_functions =
           ("<", [IntType, IntType], BoolType),
           ("<=", [IntType, IntType], BoolType),
           ("int_to_string", [IntType], StringType),
-          ("output_int", [IntType], VoidType),
+          ("write_int", [IntType], VoidType),
           -- string
           ("<>", [StringType, StringType], VoidType),
-          ("output_string", [StringType], VoidType)
+          ("write_string", [StringType], VoidType),
+          ("read_string", [], StringType)
         ]
   where
     make :: (String, [Type], Type) -> (Name, [Type], Type)

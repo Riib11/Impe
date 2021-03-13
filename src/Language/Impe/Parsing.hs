@@ -1,6 +1,12 @@
-module Language.Impe.Parsing where
+module Language.Impe.Parsing
+  ( parseProgram,
+    parseInstruction,
+    parseExpression,
+    instruction,
+    expression,
+  )
+where
 
-import Control.Monad
 import Language.Impe.Excepting as Excepting
 import Language.Impe.Grammar
 import Language.Impe.Lexing
@@ -252,45 +258,45 @@ application = do
 name :: Parser Name
 name = Name <$> identifier
 
-{-
-## REPL
--}
+-- {-
+-- ## REPL
+-- -}
 
-data InputREPL
-  = InstructionREPL Instruction
-  | ExpressionREPL Expression
-  | CommandREPL CommandREPL
-  deriving (Show)
+-- data InputREPL
+--   = InstructionREPL Instruction
+--   | ExpressionREPL Expression
+--   | CommandREPL CommandREPL
+--   deriving (Show)
 
-data CommandREPL
-  = CommandREPL_Quit
-  | CommandREPL_GetContext
-  | CommandREPL_GetType Instruction
-  deriving (Show)
+-- data CommandREPL
+--   = CommandREPL_Quit
+--   | CommandREPL_GetContext
+--   | CommandREPL_GetType Instruction
+--   deriving (Show)
 
-inputREPL :: Parser InputREPL
-inputREPL = do
-  inpt <-
-    choice . map try $
-      [ CommandREPL <$> commandREPL,
-        InstructionREPL <$> instruction,
-        ExpressionREPL <$> expression
-      ]
-  eof
-  return inpt
+-- inputREPL :: Parser InputREPL
+-- inputREPL = do
+--   inpt <-
+--     choice . map try $
+--       [ CommandREPL <$> commandREPL,
+--         InstructionREPL <$> instruction,
+--         ExpressionREPL <$> expression
+--       ]
+--   eof
+--   return inpt
 
-commandREPL :: Parser CommandREPL
-commandREPL = do
-  void $ char ':'
-  choice . map try $
-    [ do
-        choice . map symbol $ ["q", "quit"]
-        return CommandREPL_Quit,
-      do
-        choice . map symbol $ ["ctx", "context"]
-        return CommandREPL_GetContext,
-      do
-        choice . map symbol $ ["t", "type"]
-        inst <- instruction <|> (Return <$> expression)
-        return $ CommandREPL_GetType inst
-    ]
+-- commandREPL :: Parser CommandREPL
+-- commandREPL = do
+--   void $ char ':'
+--   choice . map try $
+--     [ do
+--         choice . map symbol $ ["q", "quit"]
+--         return CommandREPL_Quit,
+--       do
+--         choice . map symbol $ ["ctx", "context"]
+--         return CommandREPL_GetContext,
+--       do
+--         choice . map symbol $ ["t", "type"]
+--         inst <- instruction <|> (Return <$> expression)
+--         return $ CommandREPL_GetType inst
+--     ]

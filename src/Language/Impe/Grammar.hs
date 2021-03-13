@@ -1,4 +1,20 @@
-module Language.Impe.Grammar where
+module Language.Impe.Grammar
+  ( Program (..),
+    Instruction (..),
+    Type (..),
+    mainType,
+    Expression (..),
+    Value,
+    Binding,
+    Closure,
+    Name (..),
+    mainName,
+    showArgs,
+    showArgsNames,
+    showArgsTypes,
+    showParams,
+  )
+where
 
 import Data.List (intercalate)
 import Data.Namespace

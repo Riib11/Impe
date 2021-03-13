@@ -1,4 +1,9 @@
-module Main.Excepting where
+module Main.Excepting
+  ( Exception (..),
+    Config (..),
+    throw,
+  )
+where
 
 import qualified Language.Impe.Excepting
 import Polysemy
@@ -18,15 +23,22 @@ import Prelude hiding (exp)
 data Exception
   = Interpretation Language.Impe.Excepting.Exception
   | Interaction Language.Impe.Excepting.Exception
-  | Config String
+  | Config Config
   | Misc String
 
 instance Show Exception where
   show = \case
     Interpretation excp -> show excp
     Interaction excp -> show excp
-    Config msg -> printf "[exception] config\n%s" msg
+    Config cfgErr -> printf "[exception] config\n%s" (show cfgErr)
     Misc msg -> printf "[exception] miscellaneous\n%s" msg
+
+data Config
+  = MissingSource
+
+instance Show Config where
+  show = \case
+    MissingSource -> "requires a source file"
 
 {-
 ## Excepting computation

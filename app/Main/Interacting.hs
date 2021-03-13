@@ -1,4 +1,4 @@
-module Main.Interacting where
+module Main.Interacting (interact) where
 
 import Control.Monad
 import Data.List (intercalate)
@@ -7,13 +7,17 @@ import qualified Language.Impe.Executing as Executing
 import Language.Impe.Interpreting
 import Language.Impe.Logging
 import qualified Language.Impe.Typechecking as Typechecking
+import Main.Config.Grammar
 import qualified Main.Excepting as MainExcepting
 import Main.Interacting.Grammar
 import Main.Interacting.Parsing
+import Main.Output
 import Polysemy
 import Polysemy.Error (Error, runError)
 import Polysemy.Output (Output)
+import Polysemy.Reader
 import Polysemy.State
+import Polysemy.Writer
 import System.IO hiding (interact)
 import Text.Printf
 import Prelude hiding (interact, log)
@@ -23,16 +27,25 @@ interact ::
     Member (State Typechecking.Context) r,
     Member (State Executing.Context) r,
     Member (Error MainExcepting.Exception) r,
+    Member (Reader Config) r,
     Member (Embed IO) r
   ) =>
   Sem r ()
 interact = do
   continue <-
-    (runError :: Sem (Error ImpeExcepting.Exception : r) Bool -> Sem r (Either ImpeExcepting.Exception Bool)) interactStep >>= \case
-      Left err -> do
+    (runWriter . runError :: Sem (Error ImpeExcepting.Exception : Writer String : r) Bool -> Sem r (String, Either ImpeExcepting.Exception Bool)) interactStep >>= \case
+      (out, Left err) -> do
+        -- write to output
+        writeOutputAppended out
+        -- log error
         log Tag_Error $ printf "%s" (show err)
+        -- continue
         return True
-      Right b -> return b
+      (out, Right b) -> do
+        -- write to output
+        writeOutputAppended out
+        -- continue?
+        return b
   if continue
     then interact
     else log Tag_Output "[impe - interact] quit"
@@ -43,6 +56,7 @@ interactStep ::
     Member (State Executing.Context) r,
     Member (Error ImpeExcepting.Exception) r,
     Member (Error MainExcepting.Exception) r,
+    Member (Writer String) r,
     Member (Embed IO) r
   ) =>
   Sem r Bool
@@ -63,8 +77,8 @@ interactStep = do
         -- interpret input
         (mb_v, t) <- interpretInstructionParsed inst
         -- handle outputs
-        Executing.logOutputs
-        Executing.resetOutputs
+        Executing.tellOutputString
+        Executing.resetOutputString
         -- result
         case mb_v of
           Just v -> log Tag_Output $ printf "returns %s :: %s" (show v) (show t)
@@ -75,14 +89,14 @@ interactStep = do
         -- interpret input
         (v, t) <- interpretExpressionParsed expr
         -- handle outputs
-        Executing.logOutputs
-        Executing.resetOutputs
+        Executing.tellOutputString
+        Executing.resetOutputString
         -- result
         log Tag_Output $ printf "%s :: %s" (show v) (show t)
         -- continue
         return True
       Command_MetaCommand mtacmd -> interpretMetaCommand mtacmd
-  log Tag_Output $ printf "\n"
+  -- log Tag_Output $ printf "\n" -- TODO: needed?
   return b
 
 interpretMetaCommand ::
@@ -107,7 +121,11 @@ interpretMetaCommand = \case
   MetaCommand_Help -> do
     log Tag_Output . intercalate "\n" $
       [ "[impe - interact] help",
-        "TODO"
+        "  <instruction>      execute instruction",
+        "  :e <expression>    evaluate expression",
+        "  :context / :c      print context",
+        "  :help    / :h      print help",
+        "  :quit    / :q      quit"
       ]
     -- continue
     return True

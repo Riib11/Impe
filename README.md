@@ -41,6 +41,10 @@ This project demonstrates the following tools:
 
 ## To Do
 
+- [ ] finish implementing writing to output file (all at once) - rather than
+      handling logs by IO printing, instead tell writer at `startInterpret`'s
+      level
+- [ ] finish implementing reading from input file
 - [ ] organize imports/exports names
 
 - [x] better organization for executing and parsing primitive functions and

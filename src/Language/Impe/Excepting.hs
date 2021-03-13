@@ -1,4 +1,11 @@
-module Language.Impe.Excepting where
+module Language.Impe.Excepting
+  ( Exception (..),
+    Typechecking (..),
+    Executing (..),
+    Interpreting (..),
+    throw,
+  )
+where
 
 import qualified Language.Impe.Grammar as Grammar
 import Polysemy
@@ -66,6 +73,7 @@ data Executing
   | FunctionUndeclaredMention Grammar.Name
   | FunctionUninitializedMention Grammar.Name
   | FunctionNo Grammar.Name
+  | EndOfInput
 
 instance Show Executing where
   show = \case
@@ -79,6 +87,7 @@ instance Show Executing where
     FunctionUndeclaredMention x -> printf "the function `%s` must be declared before it can be mentioned" (show x)
     FunctionUninitializedMention x -> printf "the function `%s` must be initialized before it can be mentioned" (show x)
     FunctionNo f -> printf "expected the name `%s` to refer to a (constructed) function" (show f)
+    EndOfInput -> printf "attempted to read next input line, but already at end of input"
 
 {-
 ### Interpreting

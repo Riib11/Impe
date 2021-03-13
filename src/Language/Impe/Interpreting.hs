@@ -1,4 +1,11 @@
-module Language.Impe.Interpreting where
+module Language.Impe.Interpreting
+  ( interpretProgram,
+    interpretInstruction,
+    interpretInstructionParsed,
+    interpretExpression,
+    interpretExpressionParsed,
+  )
+where
 
 import Control.Monad
 import Language.Impe.Excepting (Exception)

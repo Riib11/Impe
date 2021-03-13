@@ -1,4 +1,9 @@
-module Language.Impe.Logging where
+module Language.Impe.Logging
+  ( Log (..),
+    Tag (..),
+    log,
+  )
+where
 
 import Polysemy
 import Polysemy.Output

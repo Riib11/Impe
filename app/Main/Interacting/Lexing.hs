@@ -1,6 +1,15 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
-module Main.Interacting.Lexing where
+module Main.Interacting.Lexing
+  ( braces,
+    identifier,
+    colon,
+    semi,
+    parens,
+    commaSep,
+    symbol,
+  )
+where
 
 import Control.Monad.Identity
 import Text.ParserCombinators.Parsec

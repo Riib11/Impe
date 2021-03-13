@@ -3,18 +3,22 @@ module Main where
 import Control.Lens
 import Control.Monad
 import qualified Language.Impe.Executing as Executing
-import Language.Impe.Interpreting hiding (throw)
+import Language.Impe.Interpreting
 import Language.Impe.Logging
 import qualified Language.Impe.Typechecking as Typechecking
-import Main.Config
-import Main.Excepting as Excepting
-import Main.Interacting as Interacting
+import Main.Config.Grammar
+import Main.Config.Parsing
+import Main.Excepting (Exception, throw)
+import qualified Main.Excepting as Excepting
+import Main.Interacting
+import Main.Output
 import Polysemy hiding (interpret)
 import Polysemy.Error (Error, runError)
 import Polysemy.Output
 import Polysemy.Reader
 import Polysemy.State
-import System.IO as IO hiding (interact)
+import Polysemy.Writer
+import System.IO hiding (interact)
 import Text.Printf
 import Prelude hiding (interact, log)
 
@@ -37,10 +41,8 @@ start ::
 start = do
   cfg <- parseConfig
   case cfg & mode of
-    Mode_Interpret ->
-      runReader cfg startInterpret
-    Mode_Interact ->
-      runReader cfg startInteract
+    Mode_Interpret -> runReader cfg startInterpret
+    Mode_Interact -> runReader cfg startInteract
 
 startInterpret ::
   Sem
@@ -50,27 +52,36 @@ startInterpret ::
      ]
     ()
 startInterpret = do
-  -- get filename
-  fn <-
+  -- get source filename
+  src_fn <-
     asks source_filename >>= \case
-      Just fn -> return fn
-      Nothing -> throw . Excepting.Config $ "interpretation mode requires an input source file"
+      Just src_fn -> return src_fn
+      Nothing -> throw . Excepting.Config $ Excepting.MissingSource
   -- read source
-  src <- embed $ readFile fn
-  ( runError
-      . evalState Executing.emptyContext
+  src <- embed $ readFile src_fn
+  -- read data
+  inp <-
+    asks input_filename >>= \case
+      Just inp_fn -> lines <$> embed (readFile inp_fn)
+      Nothing -> return []
+  (out, result) <-
+    runWriter
+      . runError
+      . evalState (Executing.initContext inp)
       . evalState Typechecking.emptyContext
-      . runOutputSem handleOutputLog
-    )
-    ( do
+      . runOutputSem
+        handleOutputLog
+      $ do
         -- interpret source
-        interpretProgram fn src
-        -- log outputs
-        Executing.logOutputs
-    )
-    >>= \case
-      Left excp -> throw . Excepting.Interpretation $ excp
-      Right () -> return ()
+        interpretProgram src_fn src
+        -- tell outputs
+        Executing.tellOutputString
+  -- write output
+  writeOutput out
+  -- handle exception
+  case result of
+    Left excp -> throw . Excepting.Interpretation $ excp
+    Right () -> return ()
 
 startInteract ::
   Sem
@@ -81,38 +92,55 @@ startInteract ::
     ()
 startInteract = do
   -- get filename and source
-  (fn, src) <-
+  (src_fn, src) <-
     asks source_filename >>= \case
       -- get filename
-      Just fn -> do
-        src <- embed $ readFile fn
-        return (fn, src)
+      Just src_fn -> do
+        src <- embed $ readFile src_fn
+        return (src_fn, src)
       -- default empty source file
       Nothing ->
-        return ("default", "")
-
-  ( runError
-      . evalState Executing.emptyContext
-      . evalState Typechecking.emptyContext
-      . runOutputSem handleOutputLog
-    )
-    ( do
-        -- interpret source
-        interpretProgram fn src
-        -- log outputs
-        Executing.logOutputs
-        Executing.resetOutputs
-        -- start interact loop
-        log Tag_Output "[impe - interact] start"
-        interact
-    )
-    >>= \case
-      Left excp -> throw . Excepting.Interaction $ excp
-      Right () -> return ()
+        return ("default_empty_source_file", "")
+  -- read data
+  inp <-
+    asks input_filename >>= \case
+      Just inp_fn -> lines <$> embed (readFile inp_fn)
+      Nothing -> return []
+  -- interpret then interact
+  result <-
+    runError $ do
+      -- interpret
+      (out, (exeCtx, (tchCtx, ()))) <-
+        runWriter
+          . runState (Executing.initContext inp)
+          . runState Typechecking.emptyContext
+          . runOutputSem
+            handleOutputLog
+          $ do
+            -- interpret source
+            interpretProgram src_fn src
+            -- tell outputs
+            Executing.tellOutputString
+            Executing.resetOutputString
+      -- write output
+      writeOutput out
+      -- interact
+      evalState exeCtx
+        . evalState tchCtx
+        . runOutputSem
+          handleOutputLog
+        $ do
+          -- start interact loop
+          log Tag_Output "[impe - interact] start"
+          interact
+  -- handle exception
+  case result of
+    Left excp -> throw . Excepting.Interpretation $ excp
+    Right () -> return ()
 
 handleOutputLog ::
-  ( Member (Embed IO) r,
-    Member (Reader Config) r
+  ( Member (Reader Config) r,
+    Member (Embed IO) r
   ) =>
   Log ->
   Sem r ()

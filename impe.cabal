@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d0de6564141edcbe8519c37e35e05b4c4c48d3dd756bfdc15e147e357320300b
+-- hash: 948e04bfe173128c2605b0845dc08e0fd5837b44038973e9b104cf5e1a6d8461
 
 name:           impe
 version:        0.1.0.0
@@ -58,7 +58,6 @@ library
 executable impe-exe
   main-is: Main.hs
   other-modules:
-      Main.Config
       Main.Config.Grammar
       Main.Config.Parsing
       Main.Excepting
@@ -66,6 +65,7 @@ executable impe-exe
       Main.Interacting.Grammar
       Main.Interacting.Lexing
       Main.Interacting.Parsing
+      Main.Output
       Paths_impe
   hs-source-dirs:
       app

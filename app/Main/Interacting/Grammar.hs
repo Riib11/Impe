@@ -1,4 +1,8 @@
-module Main.Interacting.Grammar where
+module Main.Interacting.Grammar
+  ( Command (..),
+    MetaCommand (..),
+  )
+where
 
 import Language.Impe.Grammar
 

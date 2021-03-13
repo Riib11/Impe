@@ -1,4 +1,10 @@
-module Main.Config.Grammar where
+module Main.Config.Grammar
+  ( Config (..),
+    Verbosity (..),
+    verbosities,
+    Mode (..),
+  )
+where
 
 import Data.Map as Map
 import Language.Impe.Logging
@@ -6,7 +12,9 @@ import Language.Impe.Logging
 data Config = Config
   { mode :: Mode,
     verbosity :: Verbosity,
-    source_filename :: Maybe String
+    source_filename :: Maybe String,
+    input_filename :: Maybe String,
+    output_filename :: Maybe String
   }
 
 newtype Verbosity = Verbosity [Tag]

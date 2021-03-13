@@ -9,9 +9,9 @@ f(): void = {
 
   get2(): int = { return x; }
 
-  output_int(get1()); // PROBLEM! somehow this returns the local x = 0 
+  write_int(get1()); // PROBLEM! somehow this returns the local x = 0 
   
-  output_int(get2()); 
+  write_int(get2()); 
 }
 
 f();

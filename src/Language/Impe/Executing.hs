@@ -1,4 +1,15 @@
-module Language.Impe.Executing where
+module Language.Impe.Executing
+  ( Context (..),
+    emptyContext,
+    initContext,
+    executeProgram,
+    executeInstruction,
+    evaluateInstruction,
+    evaluateExpression,
+    tellOutputString,
+    resetOutputString,
+  )
+where
 
 import Control.Applicative
 import Control.Lens hiding (Context)
@@ -15,6 +26,7 @@ import Polysemy
 import Polysemy.Error (Error)
 import Polysemy.Output (Output)
 import Polysemy.State
+import Polysemy.Writer
 import Text.Printf
 import Prelude hiding (log)
 
@@ -30,8 +42,8 @@ TODO: description
 
 data Context = Context
   { _namespace :: Namespace Name Entry,
-    _inputs :: [String],
-    _outputs :: [String]
+    _inputLines :: [String],
+    _outputString :: String
   }
 
 data Entry
@@ -68,11 +80,11 @@ instance Show Context where
           . map showEntry
           $ ctx ^. namespace . store . to Map.toList,
         "",
-        "inputs:",
-        "  " ++ ctx ^. inputs . to reverse . to (List.intercalate "\n    "),
+        "inputLines:",
+        "  " ++ ctx ^. inputLines . to (List.intercalate "\n  "),
         "",
-        "outputs:",
-        "  " ++ ctx ^. outputs . to reverse . to (List.intercalate "\n    ")
+        "outputString:",
+        "  " ++ ctx ^. outputString . to (List.intercalate "\n  " . lines)
       ]
     where
       showEntry (uid, e) = case e of
@@ -97,9 +109,14 @@ emptyContext :: Context
 emptyContext =
   Context
     { _namespace = mempty,
-      _inputs = mempty,
-      _outputs = mempty
+      _inputLines = mempty,
+      _outputString = ""
     }
+
+initContext :: [String] -> Context
+initContext inp =
+  emptyContext
+    & (inputLines .~ inp)
 
 {-
 ## Processing
@@ -219,7 +236,7 @@ executePrimitiveFunction f args = do
     (Name "~", [Bool p]) -> return . Just $ Bool (not p)
     (Name "&&", [Bool p, Bool q]) -> return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) -> return . Just $ Bool (p || q)
-    (Name "output_bool", [b]) -> writeOutput (show b) >> return Nothing
+    (Name "write_bool", [b]) -> writeOutput (show b) >> return Nothing
     (Name "bool_to_int", [b]) -> return . Just $ String (show b)
     -- int
     (Name "+", [Int x, Int y]) -> return . Just $ Int (x + y)
@@ -234,10 +251,14 @@ executePrimitiveFunction f args = do
     (Name "<", [Int x, Int y]) -> return . Just $ Bool (x < y)
     (Name "<=", [Int x, Int y]) -> return . Just $ Bool (x <= y)
     (Name "int_to_string", [i]) -> return . Just $ String (show i)
-    (Name "output_int", [i]) -> writeOutput (show i) >> return Nothing
+    (Name "write_int", [i]) -> writeOutput (show i) >> return Nothing
     -- string
     (Name "<>", [String a, String b]) -> return . Just $ String (a <> b)
-    (Name "output_string", [String a]) -> writeOutput a >> return Nothing
+    (Name "write_string", [String a]) -> writeOutput a >> return Nothing
+    (Name "read_string", []) ->
+      readNextInput >>= \case
+        Just s -> return . Just $ String s
+        Nothing -> throw Excepting.EndOfInput
     -- uninterpreted
     _ ->
       throw $ Excepting.UninterpretedPrimitiveFunction f args
@@ -365,20 +386,6 @@ queryVariable x =
     Nothing ->
       throw $ Excepting.VariableUndeclaredMention x
 
-queryVariable' :: Name -> Execution r (Maybe (Maybe Value))
-queryVariable' x =
-  gets (^. namespace . at x) >>= \case
-    Just (EntryValue (Just val)) ->
-      return $ Just (Just val)
-    Just (EntryValue Nothing) ->
-      return $ Just Nothing
-    Just (EntryClosure _) ->
-      throw $ Excepting.VariableNo x
-    Just EntryPrimitiveFunction ->
-      throw $ Excepting.VariableNo x
-    Nothing ->
-      return Nothing
-
 -- closure or primitive function name
 queryFunction :: Name -> Execution r (Either Closure Name)
 queryFunction f =
@@ -406,42 +413,37 @@ initializeVariable x v = do
   declareVariable x
   adjustVariable x v
 
-initializeFunction :: Name -> Binding -> Execution r ()
-initializeFunction f bnd = do
-  declareFunction f
-  adjustFunction f bnd
-
 -- I/O
 
 writeOutput :: String -> Execution r ()
 writeOutput s =
-  modify $ outputs %~ (s :)
+  modify $ outputString %~ (++ s)
 
-readInput :: Execution r (Maybe String)
-readInput =
-  gets (^. inputs) >>= \case
+readNextInput :: Execution r (Maybe String)
+readNextInput =
+  gets (^. inputLines) >>= \case
     [] -> return Nothing
-    s : inputs' -> do
-      modify $ inputs .~ inputs'
+    s : inputLines' -> do
+      modify $ inputLines .~ inputLines'
       return $ Just s
 
-logOutputs ::
+tellOutputString ::
   ( Member (Output Log) r,
-    Member (State Context) r
+    Member (State Context) r,
+    Member (Writer String) r
   ) =>
   Sem r ()
-logOutputs =
-  gets (^. outputs . to reverse) >>= \case
-    [] -> return ()
-    os -> log Tag_Output $ List.intercalate "\n" os
+tellOutputString =
+  gets (^. outputString) >>= \case
+    "" -> return ()
+    out -> tell out
 
-resetOutputs ::
+resetOutputString ::
   ( Member (Output Log) r,
     Member (State Context) r
   ) =>
   Sem r ()
-resetOutputs =
-  modify $ outputs .~ mempty
+resetOutputString = modify $ outputString .~ ""
 
 {-
 ## Excepting

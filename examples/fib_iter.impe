@@ -1,12 +1,3 @@
-fib_rec(n: int): int = {
-  if =(n, 0) then
-    return 0; 
-  else if =(n, 1) then
-    return 1;
-  else 
-    return +(fib_rec(-(n, 1)), fib_rec(-(n, 2)));
-}
-
 fib(n: int): int = {
   i: int;
   i <- 0;
@@ -27,14 +18,13 @@ main(): void = {
   i_end: int; 
   
   i_start <- 0;
-  i_end <- 15;
+  i_end <- 20;
 
-  output_string("the first 20 Fibonacci numbers:");
- 
   i: int;
   i <- i_start;
   while <(i, i_end) do {
-    output_int(fib(i));
+    write_int(fib(i));
+    write_string("\n");
     i <- +(i, 1);
   }
 }

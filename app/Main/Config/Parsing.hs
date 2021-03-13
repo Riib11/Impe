@@ -1,16 +1,13 @@
 module Main.Config.Parsing (parseConfig) where
 
-import qualified Data.Char
 import qualified Data.Char as Char
 import Data.Map ((!), (!?))
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
-import Language.Impe.Logging
 import qualified Main.Config.Grammar as Grammar
 import Options.Applicative
 import qualified Paths_impe
 import Polysemy
-import Polysemy.Embed
 import Text.Printf (printf)
 
 {-
@@ -29,7 +26,13 @@ config =
   info
     ( helper
         <*> version
-        <*> (Grammar.Config <$> mode <*> verbosity <*> source_filename)
+        <*> ( Grammar.Config
+                <$> mode
+                <*> verbosity
+                <*> source_filename
+                <*> input_filename
+                <*> output_filename
+            )
     )
     (fullDesc <> progDesc "impe" <> header "the impe language")
 
@@ -55,8 +58,7 @@ verbosity = do
         <> long "verbosity"
         <> value (Grammar.verbosities ! "normal")
         <> help "verbosity modes: debug, normal, quiet, silent, arrogant"
-    ) ::
-    Parser Grammar.Verbosity
+    )
 
 parseVerbosity :: ReadM Grammar.Verbosity
 parseVerbosity =
@@ -72,8 +74,28 @@ source_filename :: Parser (Maybe String)
 source_filename =
   Just
     <$> ( strArgument
-            ( metavar "INPUT"
-                <> help "input filename"
+            ( metavar "SOURCE"
+                <> help "source filename"
             )
         )
+    <|> pure Nothing
+
+input_filename :: Parser (Maybe String)
+input_filename =
+  Just
+    <$> strOption
+      ( metavar "INPUT"
+          <> long "in"
+          <> help "input data filename"
+      )
+    <|> pure Nothing
+
+output_filename :: Parser (Maybe String)
+output_filename =
+  Just
+    <$> strOption
+      ( metavar "OUTPUT"
+          <> long "out"
+          <> help "output data filename"
+      )
     <|> pure Nothing

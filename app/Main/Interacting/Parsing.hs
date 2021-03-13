@@ -1,4 +1,4 @@
-module Main.Interacting.Parsing where
+module Main.Interacting.Parsing (parseCommand) where
 
 import Control.Monad
 import Language.Impe.Excepting as Excepting
