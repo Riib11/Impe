@@ -258,7 +258,7 @@ unit = do
 bool :: Parser Expression
 bool =
   (symbol "true" >> return (Bool True))
-    <|> (symbol "false" >> return (Bool True))
+    <|> (symbol "false" >> return (Bool False))
 
 -- [0-9]*
 int :: Parser Expression

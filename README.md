@@ -4,10 +4,9 @@ An imperative, interpreted, simple, extendible language.
 
 **interpreting** consists of these steps:
 
-1. **lexing**
-2. **parsing**
-3. **typing**
-4. **executing**
+1. **parsing**
+2. **typing**
+3. **executing**
 
 ## Grammar
 
@@ -39,13 +38,45 @@ This project demonstrates the following tools:
 
 <!-- TODO -->
 
+## Prelude
+
+The following functions are pre-defined:
+
+```
+_~_  :: (bool) -> bool
+_&&_ :: (bool, bool) -> bool
+_||_ :: (bool, bool) -> bool
+show_bool :: (bool) -> string
+
+_+_  :: (int, int) -> int
+_-_  :: (int, int) -> int
+_*_  :: (int, int) -> int
+_/_  :: (int, int) -> int
+_^_  :: (int, int) -> int
+_%_  :: (int, int) -> int
+_=_  :: (int, int) -> bool
+_<_  :: (int, int) -> bool
+_<=_ :: (int, int) -> bool
+_>_  :: (int, int) -> bool
+_>=_ :: (int, int) -> bool
+show_int :: (int) -> string
+
+_<>_  :: (string, string) -> string
+write :: (string) -> void
+read  :: () -> string
+```
+
 ## To Do
 
-- [ ] finish implementing writing to output file (all at once) - rather than
+- [x] optimize execution by stopping execution of function once a return has
+      been reached
+- [x] parsing infixed operators
+- [x] `Initialization` grammar construct
+- [x] finish implementing writing to output file (all at once) - rather than
       handling logs by IO printing, instead tell writer at `startInterpret`'s
       level
-- [ ] finish implementing reading from input file
-- [ ] organize imports/exports names
+- [x] finish implementing reading from input file
+- [x] organize imports/exports names
 
 - [x] better organization for executing and parsing primitive functions and
       variables

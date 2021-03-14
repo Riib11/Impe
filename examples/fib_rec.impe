@@ -13,7 +13,7 @@ main(): void = {
 
   i: int <- i_start;
   while i < i_end do {
-    write_string(int_to_string(fib(i)) <> "\n");
+    write(show_int(fib(i)) <> "\n");
     i <- i + 1;
   }
 }

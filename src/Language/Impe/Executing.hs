@@ -250,8 +250,7 @@ executePrimitiveFunction f args = do
     (Name "~", [Bool p]) -> return . Just $ Bool (not p)
     (Name "&&", [Bool p, Bool q]) -> return . Just $ Bool (p && q)
     (Name "||", [Bool p, Bool q]) -> return . Just $ Bool (p || q)
-    (Name "write_bool", [b]) -> writeOutput (show b) >> return Nothing
-    (Name "bool_to_int", [b]) -> return . Just $ String (show b)
+    (Name "show_bool", [b]) -> return . Just $ String (show b)
     -- int
     (Name "+", [Int x, Int y]) -> return . Just $ Int (x + y)
     (Name "-", [Int x, Int y]) -> return . Just $ Int (x - y)
@@ -264,12 +263,11 @@ executePrimitiveFunction f args = do
     (Name ">=", [Int x, Int y]) -> return . Just $ Bool (x >= y)
     (Name "<", [Int x, Int y]) -> return . Just $ Bool (x < y)
     (Name "<=", [Int x, Int y]) -> return . Just $ Bool (x <= y)
-    (Name "int_to_string", [i]) -> return . Just $ String (show i)
-    (Name "write_int", [i]) -> writeOutput (show i) >> return Nothing
+    (Name "show_int", [i]) -> return . Just $ String (show i)
     -- string
     (Name "<>", [String a, String b]) -> return . Just $ String (a <> b)
-    (Name "write_string", [String a]) -> writeOutput a >> return Nothing
-    (Name "read_string", []) ->
+    (Name "write", [String a]) -> writeOutput a >> return Nothing
+    (Name "read", []) ->
       readNextInput >>= \case
         Just s -> return . Just $ String s
         Nothing -> throw Excepting.EndOfInput

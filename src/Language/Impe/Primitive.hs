@@ -17,8 +17,7 @@ primitive_functions =
           ("&&", [BoolType, BoolType], BoolType),
           ("||", [BoolType, BoolType], BoolType),
           ("~", [BoolType], BoolType),
-          ("bool_to_string", [BoolType], StringType),
-          ("write_bool", [BoolType], VoidType),
+          ("show_bool", [BoolType], StringType),
           -- int
           ("+", [IntType, IntType], IntType),
           ("-", [IntType, IntType], IntType),
@@ -31,12 +30,11 @@ primitive_functions =
           (">=", [IntType, IntType], BoolType),
           ("<", [IntType, IntType], BoolType),
           ("<=", [IntType, IntType], BoolType),
-          ("int_to_string", [IntType], StringType),
-          ("write_int", [IntType], VoidType),
+          ("show_int", [IntType], StringType),
           -- string
           ("<>", [StringType, StringType], StringType),
-          ("write_string", [StringType], VoidType),
-          ("read_string", [], StringType)
+          ("write", [StringType], VoidType),
+          ("read", [], StringType)
         ]
   where
     make :: (String, [Type], Type) -> (Name, [Type], Type)
