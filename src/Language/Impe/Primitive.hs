@@ -34,7 +34,7 @@ primitive_functions =
           ("int_to_string", [IntType], StringType),
           ("write_int", [IntType], VoidType),
           -- string
-          ("<>", [StringType, StringType], VoidType),
+          ("<>", [StringType, StringType], StringType),
           ("write_string", [StringType], VoidType),
           ("read_string", [], StringType)
         ]

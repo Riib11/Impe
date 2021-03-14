@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
 module Language.Impe.Lexing
-  ( braces,
+  ( whiteSpace,
+    braces,
     identifier,
     colon,
     semi,
@@ -11,6 +12,8 @@ module Language.Impe.Lexing
     integer,
     natural,
     stringLiteral,
+    reserved,
+    reservedOp,
     eq,
     arrow,
   )
@@ -18,6 +21,7 @@ where
 
 import Control.Monad.Identity
 import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
 
 type LexStream = String
@@ -28,24 +32,46 @@ type LexMonad = Identity
 
 language :: Token.GenLanguageDef LexStream LexState LexMonad
 language =
-  Token.LanguageDef
+  emptyDef
     { Token.commentStart = "/*",
       Token.commentEnd = "*/",
       Token.commentLine = "//",
-      Token.nestedComments = False,
-      Token.identStart = letter <|> oneOf specials,
-      Token.identLetter = alphaNum <|> oneOf specials,
-      Token.opStart = choice [], -- oneOf "+-*/&|",
-      Token.opLetter = choice [], -- oneOf "+-*/&|",
-      Token.reservedNames = ["return"],
-      Token.reservedOpNames = [], -- ["+", "-", "*", "/", "&", "|"],
+      Token.identStart = letter,
+      Token.identLetter = alphaNum <|> oneOf ['_'],
+      Token.reservedNames =
+        [ "while",
+          "do",
+          "if",
+          "then",
+          "else",
+          "return",
+          "pass"
+        ],
+      Token.reservedOpNames =
+        [ "<-",
+          "&&",
+          "||",
+          "~",
+          "+",
+          "-",
+          "*",
+          "/",
+          "^",
+          "%",
+          "=",
+          ">",
+          ">=",
+          "<",
+          "<=",
+          "<>"
+        ],
       Token.caseSensitive = True
     }
-  where
-    specials = "~!@#$%^&*<>-=_+?/"
 
 tokenParser :: Token.TokenParser LexState
 tokenParser = Token.makeTokenParser language
+
+whiteSpace = Token.whiteSpace tokenParser
 
 braces = Token.braces tokenParser
 
@@ -67,8 +93,12 @@ natural = Token.natural tokenParser
 
 stringLiteral = Token.stringLiteral tokenParser
 
+reserved = Token.reserved tokenParser
+
+reservedOp = Token.reservedOp tokenParser
+
 --
 
-eq = symbol "="
+eq = reserved "="
 
-arrow = symbol "->"
+arrow = reserved "->"

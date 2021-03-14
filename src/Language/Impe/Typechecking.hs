@@ -158,8 +158,8 @@ synthesizeInstructionStep inst_ = case inst_ of
       mapM_ (\(x, s) -> setType x s) prms
       typecheckInstruction inst t
     return Nothing
-  Conditional e inst1 inst2 -> do
-    log Tag_Debug $ printf "synthesize conditional: %s" (show inst_)
+  Branch e inst1 inst2 -> do
+    log Tag_Debug $ printf "synthesize branch: %s" (show inst_)
     typecheckExpression e BoolType
     mbt1 <- withLocalScope $ synthesizeInstructionStep inst1
     mbt2 <- withLocalScope $ synthesizeInstructionStep inst2
@@ -181,6 +181,8 @@ synthesizeInstructionStep inst_ = case inst_ of
         return t
       fType ->
         throw $ Excepting.ApplicationNonfunction f fType args
+    return Nothing
+  Pass ->
     return Nothing
 
 synthesizeExpression :: Expression -> Typecheck r Type

@@ -1,10 +1,10 @@
 fib(n: int): int = {
-  if =(n, 0) then
+  if n = 0 then
     return 0; 
-  else if =(n, 1) then
+  else if n = 1 then
     return 1;
   else 
-    return +(fib(-(n, 1)), fib(-(n, 2)));
+    return fib(n - 1) + fib(n - 2);
 }
 
 main(): void = {
@@ -12,13 +12,13 @@ main(): void = {
   i_end: int; 
   
   i_start <- 0;
-  i_end <- 20;
+  i_end <- 15;
 
   i: int;
   i <- i_start;
-  while <(i, i_end) do {
+  while i < i_end do {
     write_int(fib(i));
     write_string("\n");
-    i <- +(i, 1);
+    i <- i + 1;
   }
 }

@@ -26,7 +26,7 @@ import Polysemy
 import Polysemy.Error (Error)
 import Polysemy.Output (Output)
 import Polysemy.State
-import Polysemy.Writer
+import Polysemy.Writer hiding (Pass)
 import Text.Printf
 import Prelude hiding (log)
 
@@ -162,7 +162,14 @@ executeInstruction :: Instruction -> Execution r (Maybe Value)
 executeInstruction inst_ = case inst_ of
   Block insts -> withLocalScope do
     log Tag_Debug "execute block start"
-    mb_v <- foldl (<|>) Nothing <$> traverse executeInstruction insts
+    mb_v <-
+      foldM
+        ( \mb_v inst -> case mb_v of
+            Just v -> return $ Just v
+            Nothing -> executeInstruction inst
+        )
+        Nothing
+        insts
     log Tag_Debug "execute block end"
     return mb_v
   Declaration x _ -> do
@@ -178,8 +185,8 @@ executeInstruction inst_ = case inst_ of
     declareFunction f
     adjustFunction f (fst <$> params, inst)
     return Nothing
-  Conditional e inst1 inst2 -> do
-    log Tag_Debug $ printf "execute conditional: %s" (show inst_)
+  Branch e inst1 inst2 -> do
+    log Tag_Debug $ printf "execute branch: %s" (show inst_)
     evaluateExpression e >>= \case
       Bool True -> withLocalScope $ executeInstruction inst1
       Bool False -> withLocalScope $ executeInstruction inst2
@@ -226,6 +233,8 @@ executeInstruction inst_ = case inst_ of
         -- execute primitive function
         void $ executePrimitiveFunction pf vs
     -- ignore result
+    return Nothing
+  Pass ->
     return Nothing
 
 executePrimitiveFunction :: Name -> [Expression] -> Execution r (Maybe Value)

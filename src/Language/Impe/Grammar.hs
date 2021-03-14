@@ -29,10 +29,11 @@ data Instruction
   | Declaration Name Type
   | Assignment Name Expression
   | Function Name [(Name, Type)] Type Instruction
-  | Conditional Expression Instruction Instruction
+  | Branch Expression Instruction Instruction
   | Loop Expression Instruction
   | Return Expression
   | ProcedureCall Name [Expression] -- procedures are functions that don't return a value
+  | Pass
   deriving (Eq)
 
 data Type
@@ -92,7 +93,7 @@ instance Show Instruction where
         (showParams params)
         (show t)
         (show inst)
-    Conditional e inst1 inst2 ->
+    Branch e inst1 inst2 ->
       printf "if %s then %s else %s" (show e) (show inst1) (show inst2)
     Loop e inst ->
       printf "while %s do %s" (show e) (show inst)
@@ -100,6 +101,7 @@ instance Show Instruction where
       printf "return %s;" (show e)
     ProcedureCall f args ->
       printf "%s(%s);" (show f) (showArgs args)
+    Pass -> "pass"
 
 instance Show Type where
   show = \case

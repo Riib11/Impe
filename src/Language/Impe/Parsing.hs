@@ -13,6 +13,7 @@ import Language.Impe.Lexing
 import Polysemy
 import Polysemy.Error (Error)
 import Text.ParserCombinators.Parsec hiding (string)
+import Text.ParserCombinators.Parsec.Expr
 
 {-
 # Parsing
@@ -30,9 +31,10 @@ parseExpression :: String -> String -> Parsed r Expression
 parseExpression = parsed expression
 
 parsed :: Parser a -> String -> String -> Parsed r a
-parsed parser filename source = case runParser parser () filename source of
-  Left prsErr -> throw . Excepting.Parsing $ prsErr
-  Right x -> return x
+parsed parser filename source =
+  case runParser (whiteSpace >> parser) () filename source of
+    Left prsErr -> throw . Excepting.Parsing $ prsErr
+    Right x -> return x
 
 {-
 ## Program
@@ -51,23 +53,27 @@ program = do
 instruction :: Parser Instruction
 instruction = do
   inst <-
-    choice . map try $
-      [ block,
-        return_,
-        function,
-        conditional,
-        loop,
-        declaration,
-        assignment,
-        procedureCall
-      ]
+    block
+      <|> pass
+      <|> return_
+      <|> try function
+      <|> branch
+      <|> loop
+      <|> try declaration
+      <|> try assignment
+      <|> try procedureCall
   return inst
 
 -- { inst... }
 block :: Parser Instruction
-block = do
-  insts <- braces (many instruction)
-  return $ Block insts
+block = Block <$> braces (many instruction)
+
+-- pass
+pass :: Parser Instruction
+pass = do
+  reserved "pass"
+  semi
+  return Pass
 
 -- x : t
 declaration :: Parser Instruction
@@ -82,12 +88,12 @@ declaration = do
 assignment :: Parser Instruction
 assignment = do
   x <- name
-  symbol "<-"
+  reservedOp "<-"
   e <- expression
   semi
   return $ Assignment x e
 
--- function f (x1:t1, ...) : t = inst
+-- f (x1:t1, ...) : t = inst
 function :: Parser Instruction
 function = do
   f <- name
@@ -98,34 +104,34 @@ function = do
     return (x, t)
   colon
   t <- type_
-  eq
+  reserved "="
   inst <- instruction
   return $ Function f params t inst
 
 -- if e then inst1 else inst2
-conditional :: Parser Instruction
-conditional = do
-  symbol "if"
+branch :: Parser Instruction
+branch = do
+  reserved "if"
   e <- expression
-  symbol "then"
+  reserved "then"
   inst1 <- instruction
-  symbol "else"
+  reserved "else"
   inst2 <- instruction
-  return $ Conditional e inst1 inst2
+  return $ Branch e inst1 inst2
 
 -- while e do inst
 loop :: Parser Instruction
 loop = do
-  symbol "while"
+  reserved "while"
   e <- expression
-  symbol "do"
+  reserved "do"
   inst <- instruction
   return $ Loop e inst
 
 -- return e
 return_ :: Parser Instruction
 return_ = do
-  symbol "return"
+  reserved "return"
   e <- expression
   semi
   return $ Return e
@@ -143,50 +149,38 @@ procedureCall = do
 
 type_ :: Parser Type
 type_ =
-  choice . map try $
-    [ voidType,
-      unitType,
-      intType,
-      boolType,
-      stringType,
-      functionType
-    ]
+  voidType
+    <|> unitType
+    <|> intType
+    <|> boolType
+    <|> stringType
+    <|> functionType
 
 -- void
 voidType :: Parser Type
-voidType = do
-  symbol "void"
-  return VoidType
+voidType = symbol "void" >> return VoidType
 
 -- unit
 unitType :: Parser Type
-unitType = do
-  symbol "unit"
-  return UnitType
+unitType = symbol "unit" >> return UnitType
 
 -- bool
 boolType :: Parser Type
-boolType = do
-  symbol "bool"
-  return BoolType
+boolType = symbol "bool" >> return BoolType
 
 -- int
 intType :: Parser Type
-intType = do
-  symbol "int"
-  return IntType
+intType = symbol "int" >> return IntType
 
 -- string
 stringType :: Parser Type
-stringType = do
-  symbol "string"
-  return StringType
+stringType = symbol "string" >> return StringType
 
 -- (s, ...) -> t
 functionType :: Parser Type
 functionType = do
   params <- parens . commaSep $ type_
-  arrow
+  reserved "->"
   t <- type_
   return $ FunctionType params t
 
@@ -195,16 +189,52 @@ functionType = do
 -}
 
 expression :: Parser Expression
-expression =
-  choice . map try $
-    [ unit,
-      bool,
-      int,
-      string,
-      application,
-      reference,
-      parens expression
-    ]
+expression = buildExpressionParser ops expression'
+  where
+    ops =
+      [ [ binaryOp "^" AssocLeft
+        ],
+        [ binaryOp "*" AssocLeft,
+          binaryOp "/" AssocLeft
+        ],
+        [ binaryOp "+" AssocLeft,
+          binaryOp "-" AssocLeft
+        ],
+        [ binaryOp "%" AssocLeft
+        ],
+        [ binaryOp "<=" AssocLeft,
+          binaryOp "<" AssocLeft,
+          binaryOp ">=" AssocLeft,
+          binaryOp ">" AssocLeft
+        ],
+        [ binaryOp "=" AssocLeft
+        ],
+        [ unaryOp "~"
+        ],
+        [ binaryOp "&&" AssocLeft,
+          binaryOp "||" AssocLeft
+        ],
+        [ binaryOp "<>" AssocLeft
+        ]
+      ]
+    unaryOp opString =
+      Prefix do
+        reservedOp opString
+        return \a -> Application (Name opString) [a]
+    binaryOp opString assocDir =
+      flip Infix assocDir do
+        reservedOp opString
+        return \a b -> Application (Name opString) [a, b]
+
+expression' :: Parser Expression
+expression' =
+  parens expression
+    <|> try unit
+    <|> try bool
+    <|> try int
+    <|> try string
+    <|> try application
+    <|> try reference
 
 -- unit
 unit :: Parser Expression
@@ -215,14 +245,8 @@ unit = do
 -- true | false
 bool :: Parser Expression
 bool =
-  choice
-    [ do
-        symbol "true"
-        return $ Bool True,
-      do
-        symbol "false"
-        return $ Bool False
-    ]
+  (symbol "true" >> return (Bool True))
+    <|> (symbol "false" >> return (Bool True))
 
 -- [0-9]*
 int :: Parser Expression
@@ -239,9 +263,7 @@ string = String <$> stringLiteral
 
 -- x
 reference :: Parser Expression
-reference = do
-  x <- name
-  return $ Reference x
+reference = Reference <$> name
 
 -- f (e, ...)
 application :: Parser Expression
@@ -257,46 +279,3 @@ application = do
 -- x
 name :: Parser Name
 name = Name <$> identifier
-
--- {-
--- ## REPL
--- -}
-
--- data InputREPL
---   = InstructionREPL Instruction
---   | ExpressionREPL Expression
---   | CommandREPL CommandREPL
---   deriving (Show)
-
--- data CommandREPL
---   = CommandREPL_Quit
---   | CommandREPL_GetContext
---   | CommandREPL_GetType Instruction
---   deriving (Show)
-
--- inputREPL :: Parser InputREPL
--- inputREPL = do
---   inpt <-
---     choice . map try $
---       [ CommandREPL <$> commandREPL,
---         InstructionREPL <$> instruction,
---         ExpressionREPL <$> expression
---       ]
---   eof
---   return inpt
-
--- commandREPL :: Parser CommandREPL
--- commandREPL = do
---   void $ char ':'
---   choice . map try $
---     [ do
---         choice . map symbol $ ["q", "quit"]
---         return CommandREPL_Quit,
---       do
---         choice . map symbol $ ["ctx", "context"]
---         return CommandREPL_GetContext,
---       do
---         choice . map symbol $ ["t", "type"]
---         inst <- instruction <|> (Return <$> expression)
---         return $ CommandREPL_GetType inst
---     ]
