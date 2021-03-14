@@ -28,6 +28,7 @@ data Instruction
   = Block [Instruction]
   | Declaration Name Type
   | Assignment Name Expression
+  | Initialization Name Type Expression
   | Function Name [(Name, Type)] Type Instruction
   | Branch Expression Instruction Instruction
   | Loop Expression Instruction
@@ -86,6 +87,8 @@ instance Show Instruction where
       printf "%s: %s;" (show x) (show t)
     Assignment x e ->
       printf "%s <- %s;" (show x) (show e)
+    Initialization x t e ->
+      printf "%s: %s <- %s" (show x) (show t) (show e)
     Function x params t inst ->
       printf
         "%s(%s): %s = %s"

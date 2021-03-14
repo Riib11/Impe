@@ -8,17 +8,12 @@ fib(n: int): int = {
 }
 
 main(): void = {
-  i_start: int;
-  i_end: int; 
-  
-  i_start <- 0;
-  i_end <- 15;
+  i_start: int <- 0;
+  i_end: int <- 15;
 
-  i: int;
-  i <- i_start;
+  i: int <- i_start;
   while i < i_end do {
-    write_int(fib(i));
-    write_string("\n");
+    write_string(int_to_string(fib(i)) <> "\n");
     i <- i + 1;
   }
 }

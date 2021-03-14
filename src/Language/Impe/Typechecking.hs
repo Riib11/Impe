@@ -151,6 +151,15 @@ synthesizeInstructionStep inst_ = case inst_ of
     t' <- synthesizeExpression e
     void $ typecheckTypes t t'
     return Nothing
+  Initialization x t e -> do
+    log Tag_Debug $ printf "synthesize initialization: %s" (show inst_)
+    -- declaration
+    when (t == VoidType) . throw $ Excepting.VariableVoid x
+    setType x t
+    -- assignment
+    t' <- synthesizeExpression e
+    void $ typecheckTypes t t'
+    return Nothing
   Function f prms t inst -> do
     log Tag_Debug $ printf "synthesize function: %s" (show inst_)
     setType f $ FunctionType (snd <$> prms) t

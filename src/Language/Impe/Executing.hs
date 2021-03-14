@@ -180,6 +180,11 @@ executeInstruction inst_ = case inst_ of
     log Tag_Debug $ printf "execute assignment: %s" (show inst_)
     adjustVariable x =<< evaluateExpression e
     return Nothing
+  Initialization x _ e -> do
+    log Tag_Debug $ printf "execute initialization: %s" (show inst_)
+    declareVariable x -- declaration
+    adjustVariable x =<< evaluateExpression e -- assignment
+    return Nothing
   Function f params _ inst -> do
     log Tag_Debug $ printf "execute function definition: %s" (show inst_)
     declareFunction f

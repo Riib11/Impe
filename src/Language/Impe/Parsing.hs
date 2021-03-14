@@ -59,6 +59,7 @@ instruction = do
       <|> try function
       <|> branch
       <|> loop
+      <|> try initialization
       <|> try declaration
       <|> try assignment
       <|> try procedureCall
@@ -68,14 +69,25 @@ instruction = do
 block :: Parser Instruction
 block = Block <$> braces (many instruction)
 
--- pass
+-- pass;
 pass :: Parser Instruction
 pass = do
   reserved "pass"
   semi
   return Pass
 
--- x : t
+-- x : t <- e;
+initialization :: Parser Instruction
+initialization = do
+  x <- name
+  colon
+  t <- type_
+  reserved "<-"
+  e <- expression
+  semi
+  return $ Initialization x t e
+
+-- x : t;
 declaration :: Parser Instruction
 declaration = do
   x <- name
@@ -84,7 +96,7 @@ declaration = do
   semi
   return $ Declaration x t
 
--- x <- e
+-- x <- e;
 assignment :: Parser Instruction
 assignment = do
   x <- name
@@ -128,7 +140,7 @@ loop = do
   inst <- instruction
   return $ Loop e inst
 
--- return e
+-- return e;
 return_ :: Parser Instruction
 return_ = do
   reserved "return"
@@ -136,7 +148,7 @@ return_ = do
   semi
   return $ Return e
 
--- f(e, ...)
+-- f(e, ...);
 procedureCall :: Parser Instruction
 procedureCall = do
   Application f es <- application

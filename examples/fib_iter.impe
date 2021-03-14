@@ -1,17 +1,13 @@
 fib(n: int): int = {
   if n = 0 then return 0; else pass;
-  r1: int;
-  r1 <- 0;
+  r1: int <- 0;
 
   if n = 1 then return 1; else pass;
-  r2: int;
-  r2 <- 1;
+  r2: int <- 1;
 
-  i: int;
-  i <- 1;
+  i: int <- 1;
   while i < n do {
-    x: int;
-    x <- r1 + r2;
+    x: int <- r1 + r2;
 
     r1 <- r2;
     r2 <- x;
@@ -23,14 +19,10 @@ fib(n: int): int = {
 }
 
 main(): void = {
-  i_start: int;
-  i_end: int; 
-  
-  i_start <- 0;
-  i_end <- 15;
+  i_start: int <- 0;
+  i_end: int <- 15;
 
-  i: int;
-  i <- i_start;
+  i: int <- i_start;
   while i < i_end do {
     write_string(int_to_string(fib(i)) <> "\n");
     i <- i + 1;
