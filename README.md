@@ -24,13 +24,13 @@ This project demonstrates the following tools:
 
 ## Features
 
-- branching (if-then-else)
-- looping (while-do)
+- mutable variables
+- branching (`if ... then ... else ...`)
+- looping (`while ... do ... `)
 - functions
   - nested function definitions
   - nested scope capturing
 - procedures (functions that don't return a value)
-- variables are references
 
 <!-- TODO -->
 
